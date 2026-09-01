@@ -73,6 +73,9 @@ export default async function SalesPage() {
         <div className="page-header-left">
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <h1 className="page-title">Point of Sale (POS)</h1>
+            <span className="badge badge-blue" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+              Worker: {openTill.workerName || openTill.cashierName || session?.username || "Cashier"}
+            </span>
             <span className="badge badge-green" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
               ● Till Open
             </span>

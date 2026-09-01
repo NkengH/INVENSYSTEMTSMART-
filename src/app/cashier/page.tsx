@@ -34,7 +34,14 @@ export default async function CashierDashboard() {
           </p>
         </div>
         {openTill ? (
-          <span className="badge badge-green" style={{ fontSize: "0.8rem", padding: "6px 14px" }}>● Till Open</span>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <span className="badge badge-blue" style={{ fontSize: "0.8rem", padding: "6px 12px" }}>
+              Worker: {openTill.workerName || openTill.cashierName || session?.username || "Cashier"}
+            </span>
+            <span className="badge badge-green" style={{ fontSize: "0.8rem", padding: "6px 14px" }}>
+              ● Till Open
+            </span>
+          </div>
         ) : (
           <a href="/cashier/till" className="btn btn-primary"><CreditCard size={15} /> Open Till</a>
         )}

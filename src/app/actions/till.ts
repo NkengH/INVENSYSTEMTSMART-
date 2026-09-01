@@ -7,7 +7,7 @@ import { getSession } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { revalidatePath } from "next/cache";
 
-export async function openTill(openingBalance: number) {
+export async function openTill(openingBalance: number, workerName?: string) {
   await connectToDatabase();
   const session = await getSession();
   if (!session || !hasPermission(session.role, "till.open")) {
@@ -23,14 +23,18 @@ export async function openTill(openingBalance: number) {
     throw new Error("A till session is already open.");
   }
 
+  const finalWorkerName = workerName?.trim() || session.username || "Cashier";
+
   const till = await TillSession.create({
     cashierId: session.userId,
+    cashierName: finalWorkerName,
+    workerName: finalWorkerName,
     openingBalance,
     status: "OPEN",
     openedAt: new Date(),
   });
 
-  await logAudit("Open Till", `Opened till session with balance ${openingBalance}`, {
+  await logAudit("Open Till", `Worker "${finalWorkerName}" opened till session with float ${openingBalance}`, {
     permission: "till.open",
     resource: "till",
     resourceId: till._id.toString(),
@@ -41,6 +45,8 @@ export async function openTill(openingBalance: number) {
   return {
     _id: till._id.toString(),
     id: till._id.toString(),
+    cashierName: till.cashierName,
+    workerName: till.workerName,
     openingBalance: till.openingBalance,
     status: till.status,
     openedAt: till.openedAt,

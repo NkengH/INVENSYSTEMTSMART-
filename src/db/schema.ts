@@ -205,6 +205,8 @@ const PurchaseSchema = new Schema<IPurchase>(
 export interface ITillSession {
   _id: Types.ObjectId;
   cashierId: Types.ObjectId | string;
+  cashierName?: string;
+  workerName?: string;
   openingBalance: number;
   expectedBalance?: number;
   closingBalance?: number;
@@ -217,6 +219,8 @@ export interface ITillSession {
 const TillSessionSchema = new Schema<ITillSession>(
   {
     cashierId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
+    cashierName: { type: String },
+    workerName: { type: String },
     openingBalance: { type: Number, required: true },
     expectedBalance: { type: Number },
     closingBalance: { type: Number },

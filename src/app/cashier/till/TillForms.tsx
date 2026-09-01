@@ -3,9 +3,10 @@
 import { useState } from "react";
 import { openTill, closeTill } from "@/app/actions/till";
 import { formatCFA } from "@/lib/format";
-import { CreditCard, CheckCircle2, Lock } from "lucide-react";
+import { CreditCard, CheckCircle2, Lock, User } from "lucide-react";
 
-export function OpenTillForm() {
+export function OpenTillForm({ defaultWorkerName = "" }: { defaultWorkerName?: string }) {
+  const [workerName, setWorkerName] = useState(defaultWorkerName);
   const [balance, setBalance] = useState("0");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -15,7 +16,7 @@ export function OpenTillForm() {
     setError("");
     setLoading(true);
     try {
-      await openTill(parseFloat(balance));
+      await openTill(parseFloat(balance), workerName);
     } catch (err: any) {
       setError(err.message || "Failed to open till");
     } finally {
@@ -32,7 +33,27 @@ export function OpenTillForm() {
       )}
 
       <div className="form-group" style={{ marginBottom: 0 }}>
-        <label className="form-label" htmlFor="open-bal">Opening Cash Drawer Balance (CFA)</label>
+        <label className="form-label" htmlFor="worker-name">
+          <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <User size={14} /> Worker / Cashier Name
+          </span>
+        </label>
+        <input
+          id="worker-name"
+          type="text"
+          required
+          className="form-input"
+          placeholder="e.g. John Doe"
+          value={workerName}
+          onChange={(e) => setWorkerName(e.target.value)}
+        />
+        <p style={{ fontSize: "0.8rem", color: "var(--gray-500)", marginTop: 4 }}>
+          Name of the employee / cashier responsible for this till session.
+        </p>
+      </div>
+
+      <div className="form-group" style={{ marginBottom: 0 }}>
+        <label className="form-label" htmlFor="open-bal">Opening Cash Drawer Float (CFA)</label>
         <input
           id="open-bal"
           type="number"
