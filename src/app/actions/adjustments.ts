@@ -1,5 +1,6 @@
 "use server";
 
+import mongoose from "mongoose";
 import { connectToDatabase } from "@/db";
 import { Inventory, StockMovement, Product } from "@/db/schema";
 import { logAudit } from "@/lib/audit";
@@ -18,7 +19,17 @@ export interface AdjustStockPayload {
 export async function adjustStock(payload: AdjustStockPayload) {
   await connectToDatabase();
   const session = await getSession();
-  if (!session || (!hasPermission(session.role, "inventory.manage") && !hasPermission(session.role, "inventory.read"))) {
+  const isAuthorized =
+    session &&
+    (session.role === "Inventory Manager" ||
+      session.role === "Administrator" ||
+      hasPermission(session.role, "inventory.manage") ||
+      hasPermission(session.role, "inventory.read") ||
+      hasPermission(session.role, "inventory.issue") ||
+      hasPermission(session.role, "inventory.receive") ||
+      hasPermission(session.role, "inventory.monitor"));
+
+  if (!isAuthorized) {
     throw new Error("Unauthorized: Authorized inventory clearance required");
   }
 
@@ -68,7 +79,7 @@ export async function adjustStock(payload: AdjustStockPayload) {
     previousQuantity: prevQty,
     newQuantity: newQty,
     reason: formattedReason,
-    performedBy: session.userId,
+    performedBy: mongoose.isValidObjectId(session.userId) ? session.userId : undefined,
   });
 
   await logAudit("Stock Adjustment", `Adjusted ${product.name} (${product.sku}) from ${prevQty} to ${newQty} units. Reason: ${formattedReason}`, {
@@ -78,6 +89,7 @@ export async function adjustStock(payload: AdjustStockPayload) {
   });
 
   revalidatePath("/inventory-manager/inventory");
+  revalidatePath("/inventory-manager/issuance");
   revalidatePath("/inventory-manager/movements");
   revalidatePath("/inventory-manager/reports");
   revalidatePath("/inventory-manager");

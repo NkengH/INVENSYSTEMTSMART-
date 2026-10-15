@@ -1,7 +1,7 @@
 "use server";
 
 import { connectToDatabase } from "@/db";
-import { Product, Inventory } from "@/db/schema";
+import { Product, Inventory, StockMovement } from "@/db/schema";
 import { logAudit } from "@/lib/audit";
 import { getSession } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
@@ -15,6 +15,7 @@ export async function createProduct(data: {
   minimumStock: number;
   unit?: string;
   description?: string;
+  initialStock?: number;
 }) {
   await connectToDatabase();
   const session = await getSession();
@@ -39,13 +40,27 @@ export async function createProduct(data: {
     isActive: true,
   });
 
-  // Initialize inventory at 0
+  const initialStockQty = Math.max(0, Number(data.initialStock) || 0);
+
+  // Initialize inventory at initial stock quantity
   await Inventory.create({
     productId: product._id,
-    quantity: 0,
+    quantity: initialStockQty,
   });
 
-  await logAudit("Create Product", `Created product ${product.name} (${product.sku})`, {
+  if (initialStockQty > 0) {
+    await StockMovement.create({
+      productId: product._id,
+      movementType: "ADJUSTMENT",
+      quantity: initialStockQty,
+      previousQuantity: 0,
+      newQuantity: initialStockQty,
+      reason: "INITIAL_STOCK",
+      performedBy: session.userId,
+    });
+  }
+
+  await logAudit("Create Product", `Created product ${product.name} (${product.sku}) with ${initialStockQty} initial stock`, {
     permission: "products.create",
     resource: "product",
     resourceId: product._id.toString(),

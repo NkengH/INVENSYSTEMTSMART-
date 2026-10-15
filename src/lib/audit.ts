@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import { connectToDatabase } from "@/db";
 import { AuditLog } from "@/db/schema";
 import { getSession } from "./auth";
@@ -11,7 +12,7 @@ export async function logAudit(
     await connectToDatabase();
     const session = await getSession();
     await AuditLog.create({
-      userId: session?.userId,
+      userId: mongoose.isValidObjectId(session?.userId) ? session?.userId : undefined,
       userName: session?.username,
       role: session?.role,
       action,

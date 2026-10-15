@@ -1,7 +1,7 @@
 import { connectToDatabase } from "@/db";
 import { User } from "@/db/schema";
 import { getSession } from "@/lib/auth";
-import { UserActions, ToggleActiveButton } from "./UserActions";
+import { UserActions, ToggleActiveButton, ResetPasswordButton } from "./UserActions";
 import { Users, UserCheck, UserX } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -92,19 +92,33 @@ export default async function AdminUsersPage() {
                     <span className={`badge ${roleBadgeColor[user.role] || "badge-gray"}`}>{user.role}</span>
                   </td>
                   <td>
-                    <span className={`badge ${user.isActive ? "badge-green" : "badge-red"}`}>
-                      {user.isActive ? "● Active" : "○ Inactive"}
-                    </span>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
+                      <span className={`badge ${user.isActive ? "badge-green" : "badge-red"}`}>
+                        {user.isActive ? "● Active" : "○ Inactive"}
+                      </span>
+                      {user.mustChangePassword && (
+                        <span className="badge badge-amber" style={{ fontSize: "0.72rem" }} title="User must change password upon next login">
+                          🔑 Temp Password
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td style={{ color: "var(--gray-500)", fontSize: "0.82rem" }}>
                     {user.createdAt ? new Date(user.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—"}
                   </td>
                   <td>
-                    <ToggleActiveButton
-                      userId={user._id.toString()}
-                      isActive={user.isActive}
-                      currentUserId={session?.userId}
-                    />
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <ToggleActiveButton
+                        userId={user._id.toString()}
+                        isActive={user.isActive}
+                        currentUserId={session?.userId}
+                      />
+                      <ResetPasswordButton
+                        userId={user._id.toString()}
+                        username={user.username}
+                        currentUserId={session?.userId}
+                      />
+                    </div>
                   </td>
                 </tr>
               );

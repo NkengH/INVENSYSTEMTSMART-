@@ -6,10 +6,9 @@ import { Send, User, Trash2, MessageSquare, Sparkles, TrendingUp, HelpCircle } f
 
 const SUGGESTED_QUESTIONS = [
   "Which products are running low on stock?",
-  "What are our top-performing products by sales velocity?",
+  "What are our top-selling products by quantity?",
   "What is our total warehouse inventory valuation in CFA?",
-  "Recommend urgent supplier replenishment orders",
-  "Which products have zero sales recorded?",
+  "Which items need restocking soon?",
   "Give me a high-level inventory health and margin summary",
 ];
 
@@ -184,7 +183,7 @@ export function AIChatPanel() {
               How can I assist your business analysis today?
             </h3>
             <p style={{ color: "var(--gray-500)", fontSize: "0.82rem", margin: "0 0 18px", maxWidth: 460, marginLeft: "auto", marginRight: "auto" }}>
-              Ask natural questions about stock positions, slow-moving lines, profit margins, or reorder forecasts in CFA.
+              Ask natural questions about stock positions, profit margins, product sales, or inventory status in CFA.
             </p>
 
             {/* Suggested Question Chips */}
@@ -194,7 +193,7 @@ export function AIChatPanel() {
                   key={idx}
                   onClick={() => handleSend(q)}
                   style={{
-                    background: "#fff",
+                    background: "var(--bg-card)",
                     border: "1px solid var(--gray-300)",
                     borderRadius: 999,
                     padding: "6px 13px",
@@ -306,7 +305,7 @@ export function AIChatPanel() {
             </div>
             <div
               style={{
-                background: "#fff",
+                background: "var(--bg-card)",
                 padding: "12px 18px",
                 borderRadius: "14px 14px 14px 4px",
                 border: "1px solid var(--gray-200)",
@@ -337,7 +336,7 @@ export function AIChatPanel() {
         style={{
           padding: "12px 18px",
           borderTop: "1px solid var(--gray-200)",
-          background: "#fff",
+          background: "var(--bg-card)",
           display: "flex",
           gap: 10,
           alignItems: "center",

@@ -97,6 +97,34 @@ class SoundEffects {
       osc.stop(ctx.currentTime + 0.2);
     } catch {}
   }
+
+  /**
+   * Subtle notification chime (2-tone harmonic chime for live incoming alerts)
+   */
+  playNotificationChime() {
+    try {
+      const ctx = this.getContext();
+      if (!ctx) return;
+
+      const now = ctx.currentTime;
+      [659.25, 880].forEach((freq, index) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(freq, now + index * 0.08);
+
+        gain.gain.setValueAtTime(0.12, now + index * 0.08);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + index * 0.08 + 0.2);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(now + index * 0.08);
+        osc.stop(now + index * 0.08 + 0.2);
+      });
+    } catch {}
+  }
 }
 
 export const sounds = new SoundEffects();

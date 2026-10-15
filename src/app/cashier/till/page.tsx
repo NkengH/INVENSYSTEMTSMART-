@@ -62,7 +62,7 @@ export default async function TillPage() {
             </div>
             <div className="card">
               <div className="card-header">
-                <div className="card-header-title">Open New Till Session</div>
+                <div className="card-header-title">Create Till Session</div>
               </div>
               <div className="card-body">
                 <OpenTillForm defaultWorkerName={session?.username || ""} />

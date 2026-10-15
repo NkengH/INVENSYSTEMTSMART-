@@ -2,9 +2,69 @@
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { connectToDatabase } from "@/db";
-import { Product, Inventory, Sale, SaleItem, StockMovement, Purchase } from "@/db/schema";
+import { Product, Inventory, Sale, SaleItem, StockMovement, Purchase, Category, PurchaseItem } from "@/db/schema";
 import { getSession } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
+
+// ── Gemini model cascade: prioritizes lowest-latency verified models first ────
+const GEMINI_MODEL_CASCADE = [
+  "gemini-3.1-flash-lite",    // Ultra-fast verified model (sub-second response ~500ms - 1.2s)
+  "gemini-flash-latest",      // Robust official alias fallback
+  "gemini-flash-lite-latest", // Lite fallback
+  "gemini-3.5-flash",         // Standard flash fallback
+  "gemini-2.5-flash",         // Base flash fallback
+];
+
+// In-memory cache of currently working model to eliminate failover retry latency on subsequent requests
+let activeWorkingModel = "gemini-3.1-flash-lite";
+
+async function callGemini(
+  apiKey: string,
+  prompt: string,
+  opts?: { maxTokens?: number; temperature?: number }
+): Promise<string> {
+  const genAI = new GoogleGenerativeAI(apiKey);
+
+  // Try the active working model first, then the rest of the cascade
+  const modelsToTry = [
+    activeWorkingModel,
+    ...GEMINI_MODEL_CASCADE.filter((m) => m !== activeWorkingModel),
+  ];
+
+  let lastError: any;
+  for (const modelName of modelsToTry) {
+    try {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        generationConfig: {
+          maxOutputTokens: opts?.maxTokens ?? 1024,
+          temperature: opts?.temperature ?? 0.2,
+          topP: 0.95,
+        },
+      });
+
+      const result = await model.generateContent(prompt);
+      activeWorkingModel = modelName;
+      return result.response.text().trim();
+    } catch (err: any) {
+      const msg: string = err?.message ?? "";
+      const is503 = msg.includes("503") || msg.toLowerCase().includes("high demand") || msg.toLowerCase().includes("overloaded");
+      const is429 = msg.includes("429") || msg.toLowerCase().includes("quota");
+      const isUnavailable =
+        msg.includes("404") ||
+        msg.toLowerCase().includes("no longer available") ||
+        msg.toLowerCase().includes("not found") ||
+        msg.toLowerCase().includes("update your code");
+
+      if (is503 || is429 || isUnavailable) {
+        lastError = err;
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastError ?? new Error("All Gemini models in cascade failed");
+}
 
 export interface AIAnalysisResult {
   demandForecasting: string[];
@@ -63,14 +123,12 @@ export async function generateComprehensiveAIAnalysis(): Promise<AIAnalysisResul
     };
   }
 
-  // Pre-calculate statistical baseline from real database records
   const inventorySnapshot = products.map((p) => {
     const inv = inventoryList.find((i) => i.productId.toString() === p._id.toString());
     const qty = inv?.quantity ?? 0;
     const soldItems = saleItems.filter((si) => si.productId.toString() === p._id.toString());
     const totalUnitsSold = soldItems.reduce((acc, curr) => acc + curr.quantity, 0);
     const prodMovements = movements.filter((m) => m.productId.toString() === p._id.toString());
-
     return {
       name: p.name,
       sku: p.sku,
@@ -85,16 +143,14 @@ export async function generateComprehensiveAIAnalysis(): Promise<AIAnalysisResul
     };
   });
 
-  // If no Gemini API key is configured, provide accurate deterministic statistical intelligence
   if (!apiKey) {
     const lowStockItems = inventorySnapshot.filter((i) => i.isBelowMin);
     const outOfStockItems = inventorySnapshot.filter((i) => i.isOutOfStock);
     const topSellers = [...inventorySnapshot].sort((a, b) => b.totalUnitsSold - a.totalUnitsSold).filter((i) => i.totalUnitsSold > 0);
     const zeroSales = inventorySnapshot.filter((i) => i.totalUnitsSold === 0);
-
     return {
       demandForecasting: topSellers.length > 0
-        ? topSellers.slice(0, 3).map((p) => `High customer demand observed for "${p.name}" with ${p.totalUnitsSold} units sold. Anticipate continued velocity.`)
+        ? topSellers.slice(0, 3).map((p) => `High customer demand observed for "${p.name}" with ${p.totalUnitsSold} units sold.`)
         : ["Insufficient historical sales transactions to establish dynamic demand patterns."],
       reorderRecommendations: lowStockItems.length > 0
         ? lowStockItems.map((p) => `Replenishment recommended: "${p.name}" (SKU: ${p.sku}) is at ${p.currentStock} units (Threshold: ${p.minimumStock}).`)
@@ -125,20 +181,22 @@ export async function generateComprehensiveAIAnalysis(): Promise<AIAnalysisResul
     };
   }
 
-  // LLM AI Generation via Google Gemini
   try {
-    const dataContext = JSON.stringify(inventorySnapshot, null, 2);
-    const summaryStats = `Total completed sales: ${salesList.length}, Total purchase orders: ${purchases.length}, Total stock movements logged: ${movements.length}`;
+    const compactContext = inventorySnapshot.map(
+      (i) => `${i.sku} | ${i.name} | Stock:${i.currentStock} (Min:${i.minimumStock}) | Sold:${i.totalUnitsSold} | Buy:${i.purchasePrice} Sell:${i.sellingPrice} CFA`
+    ).join("\n");
 
-    const prompt = `You are the InvenSmart AI decision-support engine for an enterprise inventory management system. All financial amounts and prices are in CFA.
-Analyze the following REAL inventory dataset and output your findings as a strict JSON object with exactly these 6 keys, each containing an array of 2 to 4 concise, actionable insight strings:
+    const summaryStats = `Total completed sales: ${salesList.length}, Total purchase orders: ${purchases.length}, Total stock movements: ${movements.length}`;
+    const prompt = `You are the InvenSmart AI decision-support engine for an enterprise inventory management system. All financial amounts are in CFA.
+Analyze this inventory data and output a strict JSON object with these 6 keys, each containing an array of 2 to 3 concise, actionable insight strings:
 
-Dataset (Values in CFA):
-${dataContext}
+Inventory Items (Values in CFA):
+${compactContext}
+
 Summary:
 ${summaryStats}
 
-Respond ONLY with a valid JSON object strictly matching this schema (do NOT wrap with backticks or other text):
+Respond ONLY with valid JSON strictly matching this schema (no backticks):
 {
   "demandForecasting": ["string", "string"],
   "reorderRecommendations": ["string", "string"],
@@ -146,29 +204,11 @@ Respond ONLY with a valid JSON object strictly matching this schema (do NOT wrap
   "salesAnalysis": ["string", "string"],
   "slowMovingProducts": ["string", "string"],
   "anomalyDetection": ["string", "string"]
-}
+}`;
 
-Important Rules:
-- All monetary values must be referenced in CFA.
-- Base every single insight purely on the provided real data.
-- If there is insufficient data for any category, write a clear string stating "Insufficient historical transaction data to determine...". Do NOT invent fake figures.
-- Keep bullet points professional, analytical, and actionable for an Inventory Manager.`;
-
-    const genAI = new GoogleGenerativeAI(apiKey);
-    let model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite" });
-    let result;
-    try {
-      result = await model.generateContent(prompt);
-    } catch (modelErr) {
-      model = genAI.getGenerativeModel({ model: "gemini-3.5-flash-lite" });
-      result = await model.generateContent(prompt);
-    }
-    const rawText = result.response.text().trim();
-
-    // Clean JSON if model output includes markdown code blocks
+    const rawText = await callGemini(apiKey, prompt, { maxTokens: 800, temperature: 0.2 });
     const cleanedJson = rawText.replace(/```json/gi, "").replace(/```/g, "").trim();
     const parsed = JSON.parse(cleanedJson);
-
     return {
       demandForecasting: Array.isArray(parsed.demandForecasting) ? parsed.demandForecasting : [],
       reorderRecommendations: Array.isArray(parsed.reorderRecommendations) ? parsed.reorderRecommendations : [],
@@ -197,7 +237,7 @@ Important Rules:
   }
 }
 
-// ─── Interactive Q&A with Gemini AI ─────────────────────────────────────────
+// ── Interactive Q&A with Gemini AI ───────────────────────────────────────────
 
 export interface AIChatMessage {
   role: "user" | "ai";
@@ -224,81 +264,89 @@ export async function askAIQuestion(
     return { answer: "", error: "Please enter a question." };
   }
 
-  // Gather real inventory context
-  const products = await Product.find({ isActive: true }).lean();
-  const inventoryList = await Inventory.find().lean();
-  const salesList = await Sale.find().sort({ createdAt: -1 }).limit(80).lean();
-  const saleItems = await SaleItem.find().sort({ createdAt: -1 }).limit(150).lean();
-  const purchases = await Purchase.find().sort({ createdAt: -1 }).limit(40).lean();
+  // Gather database context in parallel
+  const [
+    allProducts,
+    allCategories,
+    inventoryList,
+    salesList,
+    saleItems,
+    purchases,
+  ] = await Promise.all([
+    Product.find({}).lean(),
+    Category.find({}).lean(),
+    Inventory.find({}).lean(),
+    Sale.find({}).sort({ createdAt: -1 }).limit(100).lean(),
+    SaleItem.find({}).sort({ createdAt: -1 }).limit(300).lean(),
+    Purchase.find({}).sort({ createdAt: -1 }).limit(30).lean(),
+  ]);
 
-  const inventoryContext = products.map((p) => {
+  // Build category name lookup
+  const categoryMap: Record<string, string> = {};
+  for (const cat of allCategories) {
+    categoryMap[cat._id.toString()] = cat.name;
+  }
+
+  // Build compact inventory summary lines (significantly faster tokenization and inference)
+  const inventoryLines = allProducts.map((p) => {
     const inv = inventoryList.find((i) => i.productId.toString() === p._id.toString());
     const qty = inv?.quantity ?? 0;
     const soldItems = saleItems.filter((si) => si.productId.toString() === p._id.toString());
     const totalUnitsSold = soldItems.reduce((acc, curr) => acc + curr.quantity, 0);
-    return {
-      name: p.name,
-      sku: p.sku,
-      currentStock: qty,
-      minimumStock: p.minimumStock,
-      sellingPrice: p.sellingPrice,
-      purchasePrice: p.purchasePrice,
-      totalUnitsSold,
-      isBelowMin: qty <= p.minimumStock,
-      isOutOfStock: qty === 0,
-    };
-  });
+    const catName = p.categoryId ? (categoryMap[p.categoryId.toString()] ?? "General") : "General";
+    return `${p.sku} | ${p.name} | Cat:${catName} | Stock:${qty}/${p.minimumStock} min | Buy:${p.purchasePrice} Sell:${p.sellingPrice} CFA | Sold:${totalUnitsSold}${!p.isActive ? " (INACTIVE)" : ""}`;
+  }).join("\n");
+
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const addedToday = allProducts
+    .filter((p) => new Date(p.createdAt) >= todayStart)
+    .map((p) => `${p.sku} | ${p.name} | Added:${new Date(p.createdAt).toLocaleTimeString()}`)
+    .join("\n");
 
   const totalSalesRevenue = salesList.reduce((sum, s) => sum + Number(s.totalAmount), 0);
   const totalPurchaseCost = purchases.reduce((sum, p) => sum + Number(p.totalAmount), 0);
 
-  // Build conversation context
+  const purchaseSummary = purchases.slice(0, 8).map((po) =>
+    `${po.purchaseNumber} | Vendor:${po.vendorName} | ${po.status} | Total:${po.totalAmount} CFA`
+  ).join("\n");
+
   const historyMessages = conversationHistory
-    .slice(-8) // Keep last 8 messages for context window
+    .slice(-6)
     .map((msg) => `${msg.role === "user" ? "Manager" : "AI"}: ${msg.content}`)
     .join("\n");
 
-  const systemPrompt = `You are the InvenSmart AI assistant, an intelligent inventory management advisor for a Cameroon-based enterprise. All monetary values are in CFA (FCFA).
+  const now = new Date().toISOString();
 
-Your role:
-- Answer inventory, procurement, sales, stock, and business questions using the REAL data provided below
-- Provide actionable, professional, and concise answers
-- Reference specific product names, SKUs, quantities, and CFA amounts from the data
-- If the question is outside your inventory data scope, politely say so
-- NEVER invent data that isn't in the dataset
-- Format your responses clearly with bullet points or numbered lists when appropriate
-- Keep responses concise but thorough (2-6 sentences typical, more for complex questions)
+  const systemPrompt = `You are the InvenSmart AI assistant, an intelligent real-time inventory management advisor for a Cameroon enterprise. All currency is in CFA (FCFA). Current time: ${now}.
 
-LIVE INVENTORY DATA:
-${JSON.stringify(inventoryContext, null, 1)}
+Rules:
+- Answer using ONLY the real live data provided below
+- Answer concisely, professionally, and directly
+- If asked about time (e.g. what was added today), check the added today list
+- Reference exact names, SKUs, numbers, and CFA amounts
 
-SUMMARY STATS:
-- Total active products: ${products.length}
-- Total sales recorded: ${salesList.length}
-- Total revenue: ${totalSalesRevenue.toLocaleString()} CFA
-- Total purchase orders: ${purchases.length}
-- Total procurement cost: ${totalPurchaseCost.toLocaleString()} CFA
-- Gross margin: ${(totalSalesRevenue - totalPurchaseCost).toLocaleString()} CFA
-- Low stock items: ${inventoryContext.filter((i) => i.isBelowMin).length}
-- Out of stock items: ${inventoryContext.filter((i) => i.isOutOfStock).length}
+LIVE INVENTORY DATA (${allProducts.length} items):
+[SKU | Name | Category | Stock/Min | Prices | Units Sold]
+${inventoryLines}
 
-${historyMessages ? `CONVERSATION HISTORY:\n${historyMessages}\n` : ""}
-Manager's Question: ${question}
+PRODUCTS ADDED TODAY:
+${addedToday || "None"}
 
-Respond directly and professionally as the InvenSmart AI assistant. Do NOT wrap your response in JSON or code blocks.`;
+SYSTEM SUMMARY:
+- Products: ${allProducts.length} total
+- Sales Revenue: ${totalSalesRevenue.toLocaleString()} CFA (${salesList.length} sales)
+- Procurement Cost: ${totalPurchaseCost.toLocaleString()} CFA (${purchases.length} POs)
+
+RECENT POs:
+${purchaseSummary || "None"}
+
+${historyMessages ? `CONVERSATION:\n${historyMessages}\n` : ""}
+Manager: ${question}
+AI:`;
 
   try {
-    const genAI = new GoogleGenerativeAI(apiKey);
-    let model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite" });
-    let result;
-    try {
-      result = await model.generateContent(systemPrompt);
-    } catch (modelErr) {
-      model = genAI.getGenerativeModel({ model: "gemini-3.5-flash-lite" });
-      result = await model.generateContent(systemPrompt);
-    }
-    const answer = result.response.text().trim();
-
+    const answer = await callGemini(apiKey, systemPrompt, { maxTokens: 600, temperature: 0.2 });
     return { answer };
   } catch (err: any) {
     console.error("Gemini AI Chat Error:", err);

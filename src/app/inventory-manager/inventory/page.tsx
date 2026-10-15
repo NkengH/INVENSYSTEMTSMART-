@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { connectToDatabase } from "@/db";
 import { Product, Inventory } from "@/db/schema";
 import { InventoryTable, InventoryRow } from "./InventoryTable";
@@ -38,7 +39,9 @@ export default async function InventoryPage() {
         </div>
       </div>
 
-      <InventoryTable rows={rows} />
+      <Suspense fallback={null}>
+        <InventoryTable rows={rows} />
+      </Suspense>
     </>
   );
 }

@@ -1,7 +1,6 @@
 import { connectToDatabase } from "@/db";
 import { Product, Inventory } from "@/db/schema";
-import { IssuanceForm } from "./IssuanceForm";
-import { Box, Layers } from "lucide-react";
+import { IssuanceView } from "./IssuanceView";
 
 export const dynamic = "force-dynamic";
 
@@ -30,52 +29,7 @@ export default async function IssuancePage() {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
-        <div className="card">
-          <div className="card-header">
-            <div className="card-header-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <Box size={16} style={{ color: "var(--brand-600)" }} />
-              Issue Inventory Items
-            </div>
-          </div>
-          <div className="card-body">
-            <IssuanceForm products={productsWithStock} />
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="card-header">
-            <div className="card-header-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <Layers size={16} style={{ color: "var(--gray-500)" }} />
-              Stock Availability Quick-View
-            </div>
-          </div>
-          <div className="card-body" style={{ padding: 0 }}>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Product</th>
-                  <th>SKU</th>
-                  <th>Available</th>
-                </tr>
-              </thead>
-              <tbody>
-                {productsWithStock.map((p) => (
-                  <tr key={p.id}>
-                    <td style={{ fontWeight: 600, color: "var(--gray-800)" }}>{p.name}</td>
-                    <td><span className="mono badge badge-gray">{p.sku}</span></td>
-                    <td>
-                      <span className={`badge ${p.stock > 0 ? "badge-green" : "badge-red"}`}>
-                        {p.stock} units
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
+      <IssuanceView initialProducts={productsWithStock} />
     </>
   );
 }

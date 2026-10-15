@@ -7,6 +7,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   if (!session || session.role !== "Administrator") {
     redirect("/");
   }
+  if (session.mustChangePassword) {
+    redirect("/change-password");
+  }
 
   return (
     <DashboardLayout role={session.role} username={session.username}>

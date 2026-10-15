@@ -14,22 +14,30 @@ export async function openTill(openingBalance: number, workerName?: string) {
     throw new Error("Unauthorized");
   }
 
+  // 4. Validate data
+  if (openingBalance === undefined || openingBalance === null || isNaN(openingBalance) || openingBalance < 0) {
+    throw new Error("Please enter a valid opening amount (0 or greater).");
+  }
+
+  // 5. Check existing session in MongoDB
   const existingOpen = await TillSession.findOne({
     cashierId: session.userId,
     status: "OPEN",
   });
 
+  // 6. If a session already exists
   if (existingOpen) {
-    throw new Error("A till session is already open.");
+    throw new Error("A till session already exists.");
   }
 
+  // 7. If no session exists -> Create the new till session in MongoDB
   const finalWorkerName = workerName?.trim() || session.username || "Cashier";
 
   const till = await TillSession.create({
     cashierId: session.userId,
     cashierName: finalWorkerName,
     workerName: finalWorkerName,
-    openingBalance,
+    openingBalance: Number(openingBalance),
     status: "OPEN",
     openedAt: new Date(),
   });
@@ -42,7 +50,12 @@ export async function openTill(openingBalance: number, workerName?: string) {
 
   revalidatePath("/cashier/till");
   revalidatePath("/cashier/sales");
+  revalidatePath("/cashier");
+
+  // 8. Successful creation
   return {
+    success: true,
+    message: "Session saved successfully.",
     _id: till._id.toString(),
     id: till._id.toString(),
     cashierName: till.cashierName,
@@ -52,6 +65,8 @@ export async function openTill(openingBalance: number, workerName?: string) {
     openedAt: till.openedAt,
   };
 }
+
+export const createTillSession = openTill;
 
 export async function closeTill(expectedBalance: number, actualBalance: number) {
   await connectToDatabase();

@@ -1,5 +1,6 @@
 "use server";
 
+import mongoose from "mongoose";
 import { connectToDatabase } from "@/db";
 import { Inventory, StockMovement } from "@/db/schema";
 import { logAudit } from "@/lib/audit";
@@ -10,7 +11,13 @@ import { revalidatePath } from "next/cache";
 export async function issueStock(productId: string, quantity: number, reason: string) {
   await connectToDatabase();
   const session = await getSession();
-  if (!session || !hasPermission(session.role, "inventory.issue")) {
+  const isAuthorized =
+    session &&
+    (session.role === "Inventory Manager" ||
+      session.role === "Administrator" ||
+      hasPermission(session.role, "inventory.issue"));
+
+  if (!isAuthorized) {
     throw new Error("Unauthorized");
   }
 
@@ -35,7 +42,7 @@ export async function issueStock(productId: string, quantity: number, reason: st
     previousQuantity: prevQty,
     newQuantity: newQty,
     reason: reason || "Manual Stock Issuance",
-    performedBy: session.userId,
+    performedBy: mongoose.isValidObjectId(session.userId) ? session.userId : undefined,
   });
 
   await logAudit("Issue Stock", `Issued ${quantity} units of product ${productId}`, {

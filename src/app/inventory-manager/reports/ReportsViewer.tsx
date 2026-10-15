@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import { formatCFA } from "@/lib/format";
 import {
-  Download, FileText, Package, ShoppingCart, DollarSign, ArrowRightLeft,
+  Download, FileText, Package, DollarSign, ArrowRightLeft,
   BarChart3, TrendingUp, PieChart, Layers, Calendar
 } from "lucide-react";
 
@@ -17,12 +17,6 @@ interface ReportsData {
     sellingPrice: number;
     inventoryValuation: number;
     status: string;
-  }[];
-  purchases: {
-    purchaseNumber: string;
-    status: string;
-    totalAmount: number;
-    date: string;
   }[];
   sales: {
     saleNumber: string;
@@ -44,10 +38,9 @@ interface ReportsData {
 }
 
 export function ReportsViewer({ data }: { data: ReportsData }) {
-  const [activeTab, setActiveTab] = useState<"visuals" | "inventory" | "purchases" | "sales" | "movements">("visuals");
+  const [activeTab, setActiveTab] = useState<"visuals" | "inventory" | "sales" | "movements">("visuals");
 
   const totalSalesRevenue = useMemo(() => data.sales.reduce((acc, s) => acc + s.totalAmount, 0), [data.sales]);
-  const totalPurchaseCost = useMemo(() => data.purchases.reduce((acc, p) => acc + p.totalAmount, 0), [data.purchases]);
   const totalInventoryValuation = useMemo(() => data.inventory.reduce((acc, i) => acc + i.inventoryValuation, 0), [data.inventory]);
 
   function downloadCSV(filename: string, rows: Record<string, any>[]) {
@@ -95,12 +88,6 @@ export function ReportsViewer({ data }: { data: ReportsData }) {
             <Package size={14} /> Inventory Valuation ({data.inventory.length})
           </button>
           <button
-            onClick={() => setActiveTab("purchases")}
-            className={`btn btn-sm ${activeTab === "purchases" ? "btn-primary" : "btn-secondary"}`}
-          >
-            <ShoppingCart size={14} /> Purchase Orders ({data.purchases.length})
-          </button>
-          <button
             onClick={() => setActiveTab("sales")}
             className={`btn btn-sm ${activeTab === "sales" ? "btn-primary" : "btn-secondary"}`}
           >
@@ -128,11 +115,11 @@ export function ReportsViewer({ data }: { data: ReportsData }) {
       {/* 1. VISUAL FINANCIAL PERFORMANCE CHARTS */}
       {activeTab === "visuals" && (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-          {/* Revenue vs Cost Comparison */}
+          {/* Revenue Summary */}
           <div className="card">
             <div className="card-header">
               <div className="card-header-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <TrendingUp size={16} style={{ color: "var(--brand-600)" }} /> Commercial Financial Balance (CFA)
+                <TrendingUp size={16} style={{ color: "var(--brand-600)" }} /> Sales Revenue Overview (CFA)
               </div>
             </div>
             <div className="card-body">
@@ -140,33 +127,15 @@ export function ReportsViewer({ data }: { data: ReportsData }) {
                 {/* Revenue Bar */}
                 <div>
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.82rem", fontWeight: 700, marginBottom: 4 }}>
-                    <span style={{ color: "var(--success)" }}>Sales Revenue</span>
+                    <span style={{ color: "var(--success)" }}>Total Sales Revenue</span>
                     <span>{formatCFA(totalSalesRevenue)}</span>
                   </div>
                   <div style={{ height: 12, background: "var(--gray-100)", borderRadius: 6, overflow: "hidden" }}>
                     <div
                       style={{
-                        width: `${Math.min(100, totalSalesRevenue > 0 ? 100 : 0)}%`,
+                        width: `${totalSalesRevenue > 0 ? 100 : 0}%`,
                         height: "100%",
                         background: "linear-gradient(90deg, #10b981, #059669)",
-                        borderRadius: 6,
-                      }}
-                    />
-                  </div>
-                </div>
-
-                {/* Purchasing Cost Bar */}
-                <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.82rem", fontWeight: 700, marginBottom: 4 }}>
-                    <span style={{ color: "var(--danger)" }}>Purchasing Replenishment Cost</span>
-                    <span>{formatCFA(totalPurchaseCost)}</span>
-                  </div>
-                  <div style={{ height: 12, background: "var(--gray-100)", borderRadius: 6, overflow: "hidden" }}>
-                    <div
-                      style={{
-                        width: `${totalSalesRevenue > 0 ? Math.min(100, Math.round((totalPurchaseCost / totalSalesRevenue) * 100)) : 100}%`,
-                        height: "100%",
-                        background: "linear-gradient(90deg, #f87171, #dc2626)",
                         borderRadius: 6,
                       }}
                     />
@@ -195,18 +164,18 @@ export function ReportsViewer({ data }: { data: ReportsData }) {
               <div style={{ marginTop: 24, padding: 14, background: "var(--gray-50)", borderRadius: 8, border: "1px solid var(--gray-200)", display: "flex", justifyContent: "space-between" }}>
                 <div>
                   <div style={{ fontSize: "0.72rem", color: "var(--gray-500)", fontWeight: 600, textTransform: "uppercase" }}>
-                    Net Commercial Margin
+                    Total Sales
                   </div>
-                  <div style={{ fontSize: "1.1rem", fontWeight: 800, color: totalSalesRevenue - totalPurchaseCost >= 0 ? "var(--success)" : "var(--danger)", marginTop: 2 }}>
-                    {formatCFA(totalSalesRevenue - totalPurchaseCost)}
+                  <div style={{ fontSize: "1.1rem", fontWeight: 800, color: "var(--success)", marginTop: 2 }}>
+                    {formatCFA(totalSalesRevenue)}
                   </div>
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <div style={{ fontSize: "0.72rem", color: "var(--gray-500)", fontWeight: 600, textTransform: "uppercase" }}>
-                    Capital Liquidity Ratio
+                    Warehouse Value
                   </div>
-                  <div style={{ fontSize: "1.1rem", fontWeight: 800, color: "var(--gray-900)", marginTop: 2 }}>
-                    {totalPurchaseCost > 0 ? `${((totalSalesRevenue / totalPurchaseCost) * 100).toFixed(1)}%` : "N/A"}
+                  <div style={{ fontSize: "1.1rem", fontWeight: 800, color: "var(--brand-600)", marginTop: 2 }}>
+                    {formatCFA(totalInventoryValuation)}
                   </div>
                 </div>
               </div>
@@ -284,33 +253,7 @@ export function ReportsViewer({ data }: { data: ReportsData }) {
         </div>
       )}
 
-      {/* 3. PURCHASES REPORT */}
-      {activeTab === "purchases" && (
-        <div className="data-table-container">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>PO Number</th>
-                <th>Date</th>
-                <th>Status</th>
-                <th style={{ textAlign: "right" }}>Total Cost (CFA)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.purchases.map((row, idx) => (
-                <tr key={idx}>
-                  <td className="mono" style={{ fontWeight: 700, color: "var(--brand-600)" }}>{row.purchaseNumber}</td>
-                  <td style={{ color: "var(--gray-500)" }}>{row.date}</td>
-                  <td><span className="badge badge-amber">{row.status}</span></td>
-                  <td style={{ textAlign: "right", fontWeight: 800 }}>{formatCFA(row.totalAmount)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* 4. SALES REPORT */}
+      {/* 3. SALES REPORT */}
       {activeTab === "sales" && (
         <div className="data-table-container">
           <table className="data-table">
@@ -340,7 +283,7 @@ export function ReportsViewer({ data }: { data: ReportsData }) {
         </div>
       )}
 
-      {/* 5. MOVEMENTS REPORT */}
+      {/* 4. MOVEMENTS REPORT */}
       {activeTab === "movements" && (
         <div className="data-table-container">
           <table className="data-table">

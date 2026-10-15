@@ -2,10 +2,10 @@
 
 import { useState, useMemo } from "react";
 import { formatCFA } from "@/lib/format";
-import { cancelPurchase } from "@/app/actions/purchases";
+import { cancelPurchase, receivePurchase } from "@/app/actions/purchases";
 import {
   ShoppingCart, Search, X, Eye, Ban, CheckCircle2, Clock,
-  Package, Calendar, FileText, Printer, Building, CreditCard
+  Package, Calendar, FileText, Printer, Building, CreditCard, PackageCheck,
 } from "lucide-react";
 
 export interface PurchaseDetail {
@@ -43,6 +43,7 @@ export function PurchasesTable({ purchases }: { purchases: PurchaseDetail[] }) {
   const [selectedPO, setSelectedPO] = useState<PurchaseDetail | null>(null);
   const [printPO, setPrintPO] = useState<PurchaseDetail | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [receivingId, setReceivingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const filteredPurchases = useMemo(() => {
@@ -58,6 +59,25 @@ export function PurchasesTable({ purchases }: { purchases: PurchaseDetail[] }) {
       return matchesStatus && matchesSearch;
     });
   }, [purchases, searchQuery, statusFilter]);
+
+  async function handleReceive(purchaseId: string) {
+    if (!confirm("Are you sure you want to receive all items into inventory?")) return;
+    setError(null);
+    setReceivingId(purchaseId);
+    try {
+      await receivePurchase(purchaseId);
+      if (selectedPO?.id === purchaseId) {
+        setSelectedPO({ ...selectedPO, status: "Fully Received" });
+      }
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("inventory:change"));
+      }
+    } catch (err: any) {
+      setError(err.message || "Failed to receive purchase order");
+    } finally {
+      setReceivingId(null);
+    }
+  }
 
   async function handleCancel(purchaseId: string) {
     if (!confirm("Are you sure you want to cancel this purchase order?")) return;
@@ -203,15 +223,17 @@ export function PurchasesTable({ purchases }: { purchases: PurchaseDetail[] }) {
                     </button>
 
                     {p.status === "Submitted" && (
-                      <button
-                        onClick={() => handleCancel(p.id)}
-                        disabled={cancellingId === p.id}
-                        className="btn btn-danger btn-sm"
-                        style={{ padding: "4px 8px", fontSize: "0.75rem", display: "flex", alignItems: "center", gap: 4 }}
-                        title="Cancel Order"
-                      >
-                        <Ban size={13} /> {cancellingId === p.id ? "Cancelling..." : "Cancel"}
-                      </button>
+                      <>
+                        <button
+                          onClick={() => handleCancel(p.id)}
+                          disabled={cancellingId === p.id}
+                          className="btn btn-danger btn-sm"
+                          style={{ padding: "4px 8px", fontSize: "0.75rem", display: "flex", alignItems: "center", gap: 4 }}
+                          title="Cancel Order"
+                        >
+                          <Ban size={13} /> {cancellingId === p.id ? "Cancelling..." : "Cancel"}
+                        </button>
+                      </>
                     )}
                   </div>
                 </td>
@@ -289,14 +311,25 @@ export function PurchasesTable({ purchases }: { purchases: PurchaseDetail[] }) {
 
             <div className="modal-footer" style={{ justifyContent: "space-between" }}>
               {selectedPO.status === "Submitted" ? (
-                <button
-                  type="button"
-                  onClick={() => handleCancel(selectedPO.id)}
-                  disabled={cancellingId === selectedPO.id}
-                  className="btn btn-danger btn-sm"
-                >
-                  <Ban size={14} /> Cancel This Purchase Order
-                </button>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => handleReceive(selectedPO.id)}
+                    disabled={receivingId === selectedPO.id}
+                    className="btn btn-success btn-sm"
+                    style={{ display: "flex", alignItems: "center", gap: 6, background: "#059669", color: "#fff", border: "none" }}
+                  >
+                    <PackageCheck size={14} /> {receivingId === selectedPO.id ? "Receiving..." : "Receive All Items into Stock"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleCancel(selectedPO.id)}
+                    disabled={cancellingId === selectedPO.id}
+                    className="btn btn-danger btn-sm"
+                  >
+                    <Ban size={14} /> Cancel PO
+                  </button>
+                </div>
               ) : <div />}
               <div style={{ display: "flex", gap: 8 }}>
                 <button

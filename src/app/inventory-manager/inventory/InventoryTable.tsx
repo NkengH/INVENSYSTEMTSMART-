@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { formatCFA } from "@/lib/format";
 import { adjustStock, AdjustStockPayload } from "@/app/actions/adjustments";
 import {
   Search, X, Package, Layers, AlertTriangle, CheckCircle, XCircle,
-  Sliders, Printer, Download, Tag, Check, RefreshCw
+  Sliders, Printer, Download, Tag, Check, RefreshCw, Sparkles
 } from "lucide-react";
 
 export interface InventoryRow {
@@ -24,8 +25,12 @@ export interface InventoryRow {
 }
 
 export function InventoryTable({ rows }: { rows: InventoryRow[] }) {
-  const [searchQuery, setSearchQuery] = useState("");
+  const searchParams = useSearchParams();
+  const highlightSku = searchParams.get("highlight")?.toUpperCase() ?? "";
+
+  const [searchQuery, setSearchQuery] = useState(highlightSku ? highlightSku : "");
   const [filterStatus, setFilterStatus] = useState<"ALL" | "OK" | "LOW" | "OUT">("ALL");
+  const [newProductBanner, setNewProductBanner] = useState(!!highlightSku);
 
   // Adjustment Modal State
   const [adjustingProduct, setAdjustingProduct] = useState<InventoryRow | null>(null);
@@ -35,9 +40,13 @@ export function InventoryTable({ rows }: { rows: InventoryRow[] }) {
   const [adjustNotes, setAdjustNotes] = useState("");
   const [adjustLoading, setAdjustLoading] = useState(false);
   const [adjustError, setAdjustError] = useState("");
+  const [adjustSuccess, setAdjustSuccess] = useState("");
 
   // Barcode Tag Print State
   const [tagProduct, setTagProduct] = useState<InventoryRow | null>(null);
+
+  // Ref map for row scrolling
+  const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
 
   const filteredRows = useMemo(() => {
     return rows.filter((r) => {
@@ -58,6 +67,35 @@ export function InventoryTable({ rows }: { rows: InventoryRow[] }) {
     });
   }, [rows, searchQuery, filterStatus]);
 
+  // Auto-open Adjust Stock modal for newly created product
+  useEffect(() => {
+    if (!highlightSku) return;
+    const product = rows.find((r) => r.sku.toUpperCase() === highlightSku);
+    if (!product) return;
+
+    // Scroll to the row
+    const tryScroll = () => {
+      const el = rowRefs.current[product.productId];
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    };
+
+    // Open adjustment modal after short delay
+    const timer = setTimeout(() => {
+      setAdjustingProduct(product);
+      setAdjustmentType("SET");
+      setAdjustQty(product.qty || 0);
+      setAdjustNotes("Initial stock entry");
+      setAdjustError("");
+      setAdjustSuccess("");
+      tryScroll();
+    }, 400);
+
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlightSku]);
+
   const outCount = rows.filter((r) => r.isOut).length;
   const lowCount = rows.filter((r) => r.isLow).length;
   const okCount = rows.length - outCount - lowCount;
@@ -67,6 +105,7 @@ export function InventoryTable({ rows }: { rows: InventoryRow[] }) {
     e.preventDefault();
     if (!adjustingProduct) return;
     setAdjustError("");
+    setAdjustSuccess("");
     setAdjustLoading(true);
     try {
       await adjustStock({
@@ -76,8 +115,12 @@ export function InventoryTable({ rows }: { rows: InventoryRow[] }) {
         reason: adjustReason,
         notes: adjustNotes || undefined,
       });
-      setAdjustingProduct(null);
-      setAdjustNotes("");
+      setAdjustSuccess(`Stock for "${adjustingProduct.name}" updated to ${adjustmentType === "SET" ? adjustQty : (adjustmentType === "ADD" ? `+${adjustQty}` : `-${adjustQty}`)} units successfully!`);
+      setTimeout(() => {
+        setAdjustingProduct(null);
+        setAdjustNotes("");
+        setAdjustSuccess("");
+      }, 1500);
     } catch (err: any) {
       setAdjustError(err.message || "Failed to record adjustment");
     } finally {
@@ -111,6 +154,40 @@ export function InventoryTable({ rows }: { rows: InventoryRow[] }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+      {/* New Product Banner */}
+      {newProductBanner && (
+        <div
+          style={{
+            background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+            borderRadius: 12,
+            padding: "16px 20px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 16,
+            boxShadow: "0 8px 20px -4px rgba(99, 102, 241, 0.35)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <Sparkles size={22} color="#fff" />
+            <div>
+              <div style={{ fontWeight: 800, color: "#fff", fontSize: "0.92rem" }}>
+                New product <span style={{ background: "rgba(255,255,255,0.2)", borderRadius: 5, padding: "1px 8px" }}>{highlightSku}</span> added!
+              </div>
+              <div style={{ color: "rgba(255,255,255,0.8)", fontSize: "0.78rem", marginTop: 2 }}>
+                The stock adjustment panel has been opened below. Set the correct quantity and save.
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => setNewProductBanner(false)}
+            style={{ background: "rgba(255,255,255,0.15)", border: "none", borderRadius: 6, padding: "6px 10px", cursor: "pointer", color: "#fff", fontWeight: 700, fontSize: "0.78rem" }}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       {/* Stat Cards */}
       <div className="stat-grid">
         <div className="stat-card">
@@ -224,9 +301,14 @@ export function InventoryTable({ rows }: { rows: InventoryRow[] }) {
               const maxScale = Math.max(r.minStock * 3, r.qty, 10);
               const percent = Math.min(100, Math.round((r.qty / maxScale) * 100));
               const barColor = r.isOut ? "#ef4444" : r.isLow ? "#f59e0b" : "#10b981";
+              const isHighlighted = highlightSku && r.sku.toUpperCase() === highlightSku;
 
               return (
-                <tr key={r.productId}>
+                <tr
+                  key={r.productId}
+                  ref={(el) => { rowRefs.current[r.productId] = el; }}
+                  style={isHighlighted ? { background: "rgba(99,102,241,0.08)", outline: "2px solid #6366f1", outlineOffset: -2 } : undefined}
+                >
                   <td>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <div
@@ -284,7 +366,7 @@ export function InventoryTable({ rows }: { rows: InventoryRow[] }) {
                   </td>
                   <td>
                     <span className={`badge ${r.isOut ? "badge-red" : r.isLow ? "badge-amber" : "badge-green"}`}>
-                      {r.isOut ? "● Out of Stock" : r.isLow ? "▲ Low Stock" : "✓ In Stock"}
+                      {r.isOut ? "â— Out of Stock" : r.isLow ? "â–² Low Stock" : "âœ“ In Stock"}
                     </span>
                   </td>
                   <td>
@@ -319,7 +401,7 @@ export function InventoryTable({ rows }: { rows: InventoryRow[] }) {
               <tr>
                 <td colSpan={8}>
                   <div className="table-empty">
-                    <span className="table-empty-icon">🔍</span>
+                    <span className="table-empty-icon">ðŸ”</span>
                     <p style={{ fontWeight: 600, color: "var(--gray-700)", margin: "8px 0 4px" }}>No Stock Records Found</p>
                     <p style={{ color: "var(--gray-500)", fontSize: "0.875rem", margin: "0 0 10px" }}>
                       No inventory matches &ldquo;{searchQuery}&rdquo; in this status tab.
@@ -343,7 +425,7 @@ export function InventoryTable({ rows }: { rows: InventoryRow[] }) {
               <div>
                 <h2 className="modal-title">Inventory Stock Adjustment</h2>
                 <div style={{ fontSize: "0.76rem", color: "var(--gray-500)", marginTop: 2 }}>
-                  {adjustingProduct.name} ({adjustingProduct.sku}) • Current: <strong>{adjustingProduct.qty} units</strong>
+                  {adjustingProduct.name} ({adjustingProduct.sku}) â€¢ Current: <strong>{adjustingProduct.qty} units</strong>
                 </div>
               </div>
               <button onClick={() => setAdjustingProduct(null)} className="modal-close"><X size={18} /></button>
@@ -352,6 +434,26 @@ export function InventoryTable({ rows }: { rows: InventoryRow[] }) {
             {adjustError && (
               <div className="form-error" style={{ margin: "16px 24px 0" }}>
                 {adjustError}
+              </div>
+            )}
+
+            {adjustSuccess && (
+              <div
+                style={{
+                  margin: "16px 24px 0",
+                  padding: "10px 14px",
+                  background: "#ecfdf5",
+                  borderRadius: 8,
+                  border: "1px solid #6ee7b7",
+                  color: "#065f46",
+                  fontWeight: 600,
+                  fontSize: "0.82rem",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                <CheckCircle size={16} color="#10b981" /> {adjustSuccess}
               </div>
             )}
 
@@ -456,8 +558,8 @@ export function InventoryTable({ rows }: { rows: InventoryRow[] }) {
                 <button type="button" onClick={() => setAdjustingProduct(null)} className="btn btn-secondary btn-sm">
                   Cancel
                 </button>
-                <button type="submit" disabled={adjustLoading} className="btn btn-primary btn-sm">
-                  {adjustLoading ? "Recording Adjustment..." : "Confirm Stock Adjustment"}
+                <button type="submit" disabled={adjustLoading || !!adjustSuccess} className="btn btn-primary btn-sm">
+                  {adjustSuccess ? <><CheckCircle size={14} /> Saved!</> : adjustLoading ? "Recording..." : "Confirm Stock Adjustment"}
                 </button>
               </div>
             </form>
@@ -502,7 +604,7 @@ export function InventoryTable({ rows }: { rows: InventoryRow[] }) {
                 }}
               >
                 <div style={{ fontSize: "0.68rem", fontWeight: 800, letterSpacing: "0.08em", color: "#6b7280", textTransform: "uppercase" }}>
-                  INVENSMART • MAC COMPUTERS
+                  INVENSMART â€¢ MAC COMPUTERS
                 </div>
                 <div style={{ fontSize: "1.05rem", fontWeight: 900, color: "#111", margin: "8px 0 4px", lineHeight: 1.2 }}>
                   {tagProduct.name}

@@ -7,6 +7,9 @@ export default async function InvManagerLayout({ children }: { children: React.R
   if (!session || session.role !== "Inventory Manager") {
     redirect("/");
   }
+  if (session.mustChangePassword) {
+    redirect("/change-password");
+  }
 
   return (
     <DashboardLayout role={session.role} username={session.username}>

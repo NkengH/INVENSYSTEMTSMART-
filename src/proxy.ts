@@ -20,21 +20,52 @@ export async function proxy(request: NextRequest) {
   const token = request.cookies.get("session")?.value;
 
   if (!token) {
+    if (path.startsWith("/api/")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     return NextResponse.redirect(new URL("/", request.url));
   }
 
   try {
     const verified = await jwtVerify(token, JWT_SECRET);
     const role = verified.payload.role as string;
+    const mustChangePassword = Boolean(verified.payload.mustChangePassword);
 
-    // Strict role-based route protection (3 core actors)
+    // If user has a temporary password, enforce password change first
+    if (mustChangePassword) {
+      if (path === "/change-password" || path.startsWith("/api/auth/")) {
+        return NextResponse.next();
+      }
+      if (path.startsWith("/api/")) {
+        return NextResponse.json(
+          { error: "Password change required before accessing this resource", mustChangePassword: true },
+          { status: 403 }
+        );
+      }
+      return NextResponse.redirect(new URL("/change-password", request.url));
+    }
+
+    // If user already has a permanent password and tries to access /change-password, redirect to role dashboard
+    if (path === "/change-password") {
+      if (role === "Administrator") return NextResponse.redirect(new URL("/admin", request.url));
+      if (role === "Inventory Manager") return NextResponse.redirect(new URL("/inventory-manager", request.url));
+      if (role === "Cashier") return NextResponse.redirect(new URL("/cashier", request.url));
+      return NextResponse.redirect(new URL("/", request.url));
+    }
+
+    // Strict role-based route protection with Cashier inheritance
     if (path.startsWith("/admin") && role !== "Administrator") {
       return NextResponse.redirect(new URL("/", request.url));
     }
     if (path.startsWith("/inventory-manager") && role !== "Inventory Manager") {
       return NextResponse.redirect(new URL("/", request.url));
     }
-    if (path.startsWith("/cashier") && role !== "Cashier") {
+    if (
+      path.startsWith("/cashier") &&
+      role !== "Cashier" &&
+      role !== "Inventory Manager" &&
+      role !== "Administrator"
+    ) {
       return NextResponse.redirect(new URL("/", request.url));
     }
 

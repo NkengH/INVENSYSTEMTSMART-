@@ -43,14 +43,14 @@ export default async function CashierDashboard() {
             </span>
           </div>
         ) : (
-          <a href="/cashier/till" className="btn btn-primary"><CreditCard size={15} /> Open Till</a>
+          <a href="/cashier/till" className="btn btn-primary"><CreditCard size={15} /> Create Session</a>
         )}
       </div>
 
       {!openTill && (
         <div className="alert alert-warning" style={{ marginBottom: 24 }}>
           <CreditCard size={16} style={{ flexShrink: 0, marginTop: 1 }} />
-          <span>You must open a till session before processing sales. <a href="/cashier/till" style={{ fontWeight: 700, textDecoration: "underline" }}>Open Till →</a></span>
+          <span>You must create a till session before processing sales. <a href="/cashier/till" style={{ fontWeight: 700, textDecoration: "underline" }}>Create Session →</a></span>
         </div>
       )}
 

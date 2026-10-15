@@ -1,6 +1,6 @@
 import { connectToDatabase } from "@/db";
 import { User, Product, Sale, AuditLog } from "@/db/schema";
-import { Users, Package, ShoppingCart, Activity } from "lucide-react";
+import { Users, Package, ShoppingCart, Activity, CreditCard } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -63,6 +63,12 @@ export default async function AdminDashboard() {
         <div className="card-body" style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           <a href="/admin/users" className="btn btn-primary">
             <Users size={15} /> Manage Users
+          </a>
+          <a href="/cashier/sales" className="btn btn-success">
+            <ShoppingCart size={15} /> POS Sales
+          </a>
+          <a href="/cashier/till" className="btn btn-secondary">
+            <CreditCard size={15} /> Till Session
           </a>
           <a href="/admin/audit" className="btn btn-secondary">
             <Activity size={15} /> View Audit Logs

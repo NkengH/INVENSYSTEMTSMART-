@@ -4,3 +4,4 @@ export function formatCFA(amount: number | string | undefined | null): string {
   if (isNaN(num)) return "0 CFA";
   return `${num.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 })} CFA`;
 }
+

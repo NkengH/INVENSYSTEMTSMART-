@@ -7,6 +7,8 @@ export interface IUser {
   passwordHash: string;
   role: "Administrator" | "Inventory Manager" | "Cashier" | string;
   isActive: boolean;
+  mustChangePassword?: boolean;
+  passwordChangedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -22,6 +24,8 @@ const UserSchema = new Schema<IUser>(
       default: "Cashier",
     },
     isActive: { type: Boolean, default: true },
+    mustChangePassword: { type: Boolean, default: false },
+    passwordChangedAt: { type: Date, default: null },
   },
   {
     timestamps: true,
@@ -419,7 +423,42 @@ const AuditLogSchema = new Schema<IAuditLog>(
   }
 );
 
-// --- Models Export ---
+// --- Notification Schema ---
+export interface INotification {
+  _id: Types.ObjectId;
+  userId?: Types.ObjectId | string;
+  role?: string;
+  type: "warning" | "success" | "info" | "error";
+  title: string;
+  message: string;
+  link?: string;
+  read: boolean;
+  category?: "inventory" | "till" | "sales" | "ai" | "system";
+  createdAt: Date;
+}
+
+const NotificationSchema = new Schema<INotification>(
+  {
+    userId: { type: Schema.Types.ObjectId, ref: "User" },
+    role: { type: String },
+    type: { type: String, enum: ["warning", "success", "info", "error"], default: "info" },
+    title: { type: String, required: true },
+    message: { type: String, required: true },
+    link: { type: String },
+    read: { type: Boolean, default: false },
+    category: { type: String, default: "system" },
+  },
+  {
+    timestamps: { createdAt: true, updatedAt: false },
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
+  }
+);
+
+// Ensure hot-reloaded dev server doesn't use stale User model
+if (models.User && !models.User.schema.path("mustChangePassword")) {
+  delete (models as any).User;
+}
 export const User: Model<IUser> = models.User || model<IUser>("User", UserSchema);
 export const Category: Model<ICategory> = models.Category || model<ICategory>("Category", CategorySchema);
 export const Product: Model<IProduct> = models.Product || model<IProduct>("Product", ProductSchema);
@@ -434,6 +473,7 @@ export const Refund: Model<IRefund> = models.Refund || model<IRefund>("Refund", 
 export const RefundItem: Model<IRefundItem> = models.RefundItem || model<IRefundItem>("RefundItem", RefundItemSchema);
 export const Receipt: Model<IReceipt> = models.Receipt || model<IReceipt>("Receipt", ReceiptSchema);
 export const AuditLog: Model<IAuditLog> = models.AuditLog || model<IAuditLog>("AuditLog", AuditLogSchema);
+export const Notification: Model<INotification> = models.Notification || model<INotification>("Notification", NotificationSchema);
 
 // Lowercase aliases for convenience and backwards-compatibility
 export const users = User;
@@ -450,3 +490,5 @@ export const refunds = Refund;
 export const refundItems = RefundItem;
 export const receipts = Receipt;
 export const auditLogs = AuditLog;
+export const notifications = Notification;
+

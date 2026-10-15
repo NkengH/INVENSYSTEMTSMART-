@@ -4,8 +4,12 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 
 export default async function CashierLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
-  if (!session || session.role !== "Cashier") {
+  const allowedRoles = ["Cashier", "Inventory Manager", "Administrator"];
+  if (!session || !allowedRoles.includes(session.role)) {
     redirect("/");
+  }
+  if (session.mustChangePassword) {
+    redirect("/change-password");
   }
 
   return (

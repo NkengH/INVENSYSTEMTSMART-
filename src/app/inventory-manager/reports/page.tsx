@@ -1,18 +1,17 @@
 import { connectToDatabase } from "@/db";
-import { Product, Inventory, Purchase, Sale, StockMovement, User } from "@/db/schema";
+import { Product, Inventory, Sale, StockMovement, User } from "@/db/schema";
 import { formatCFA } from "@/lib/format";
 import { ReportsViewer } from "./ReportsViewer";
-import { TrendingUp, TrendingDown, DollarSign, BarChart3 } from "lucide-react";
+import { TrendingUp, Package, BarChart3 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
 export default async function ReportsPage() {
   await connectToDatabase();
 
-  const [products, inventoryList, purchases, sales, movements, users] = await Promise.all([
+  const [products, inventoryList, sales, movements, users] = await Promise.all([
     Product.find().lean(),
     Inventory.find().lean(),
-    Purchase.find().sort({ createdAt: -1 }).lean(),
     Sale.find().sort({ createdAt: -1 }).lean(),
     StockMovement.find().sort({ createdAt: -1 }).limit(100).lean(),
     User.find().lean(),
@@ -20,8 +19,6 @@ export default async function ReportsPage() {
 
   // Aggregate metrics
   const totalSalesRevenue = sales.reduce((sum, s) => sum + Number(s.totalAmount), 0);
-  const totalPurchaseCost = purchases.reduce((sum, p) => sum + Number(p.totalAmount), 0);
-  const grossProfit = totalSalesRevenue - totalPurchaseCost;
 
   // Format inventory report
   const inventoryReport = products.map((p) => {
@@ -41,13 +38,7 @@ export default async function ReportsPage() {
     };
   });
 
-  // Format purchases report
-  const purchasesReport = purchases.map((p) => ({
-    purchaseNumber: p.purchaseNumber,
-    status: p.status,
-    totalAmount: p.totalAmount,
-    date: p.createdAt ? new Date(p.createdAt).toLocaleDateString("en-GB") : "—",
-  }));
+  const totalInventoryValuation = inventoryReport.reduce((sum, i) => sum + i.inventoryValuation, 0);
 
   // Format sales report
   const salesReport = sales.map((s) => {
@@ -78,7 +69,6 @@ export default async function ReportsPage() {
 
   const reportsData = {
     inventory: inventoryReport,
-    purchases: purchasesReport,
     sales: salesReport,
     movements: movementsReport,
   };
@@ -104,25 +94,23 @@ export default async function ReportsPage() {
         </div>
 
         <div className="stat-card">
-          <div className="stat-card-icon red"><TrendingDown size={20} /></div>
-          <div className="stat-card-label">Total Purchasing Cost</div>
-          <div className="stat-card-value" style={{ color: "var(--danger)", fontSize: "1.5rem" }}>
-            {formatCFA(totalPurchaseCost)}
+          <div className="stat-card-icon" style={{ background: "#ede9fe", color: "#7c3aed" }}><Package size={20} /></div>
+          <div className="stat-card-label">Warehouse Asset Valuation</div>
+          <div className="stat-card-value" style={{ color: "var(--brand-600)", fontSize: "1.5rem" }}>
+            {formatCFA(totalInventoryValuation)}
           </div>
-          <div className="stat-card-sub">{purchases.length} purchase orders</div>
-          <div className="stat-card-accent" style={{ background: "#dc2626" }} />
+          <div className="stat-card-sub">{products.length} product lines</div>
+          <div className="stat-card-accent" style={{ background: "#7c3aed" }} />
         </div>
 
         <div className="stat-card">
-          <div className="stat-card-icon" style={{ background: grossProfit >= 0 ? "#d1fae5" : "#fee2e2", color: grossProfit >= 0 ? "#059669" : "#dc2626" }}>
-            <DollarSign size={20} />
+          <div className="stat-card-icon" style={{ background: "#dbeafe", color: "#2563eb" }}><BarChart3 size={20} /></div>
+          <div className="stat-card-label">Stock Movements Logged</div>
+          <div className="stat-card-value" style={{ color: "#2563eb", fontSize: "1.5rem" }}>
+            {movements.length}
           </div>
-          <div className="stat-card-label">Gross Margin</div>
-          <div className="stat-card-value" style={{ color: grossProfit >= 0 ? "var(--success)" : "var(--danger)", fontSize: "1.5rem" }}>
-            {formatCFA(grossProfit)}
-          </div>
-          <div className="stat-card-sub">{grossProfit >= 0 ? "Profitable Margin" : "Negative Margin"}</div>
-          <div className="stat-card-accent" style={{ background: grossProfit >= 0 ? "#059669" : "#dc2626" }} />
+          <div className="stat-card-sub">Last 100 movements</div>
+          <div className="stat-card-accent" style={{ background: "#2563eb" }} />
         </div>
       </div>
 

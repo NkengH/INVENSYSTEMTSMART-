@@ -8,7 +8,8 @@ import {
   ShoppingCart, CheckCircle, CreditCard, Trash2, Plus, Minus,
   Search, Package, DollarSign, ArrowRight, X, Sparkles, Receipt,
   PauseCircle, PlayCircle, Smartphone, Building2, User, Phone,
-  Percent, Printer, Check, Volume2, VolumeX
+  Percent, Printer, Check, Volume2, VolumeX,
+  Monitor, HardDrive, Keyboard, Mouse, Camera, Laptop, Headphones, Cpu, Plug, Tablet
 } from "lucide-react";
 
 interface CartItem {
@@ -75,7 +76,61 @@ export function SaleForm({ products }: { products: any[] }) {
   const changeAmount = paymentMethod === "CASH" && numericCashTendered > total ? numericCashTendered - total : 0;
   const hasInsufficientTender = paymentMethod === "CASH" && cashTendered !== "" && numericCashTendered < total;
 
-  function addToCart(product: any) {
+  const [scanQty, setScanQty] = useState<number>(1);
+
+  // Global hardware barcode scanner listener
+  useEffect(() => {
+    let buffer = "";
+    let lastKeyTime = 0;
+
+    function handleGlobalKeyDown(e: KeyboardEvent) {
+      const target = e.target as HTMLElement;
+      if (
+        target &&
+        (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT") &&
+        target !== searchInputRef.current
+      ) {
+        return;
+      }
+
+      const now = Date.now();
+      if (now - lastKeyTime > 80) {
+        buffer = "";
+      }
+      lastKeyTime = now;
+
+      if (e.key === "Enter") {
+        if (buffer.length >= 2) {
+          e.preventDefault();
+          const code = buffer.trim().toLowerCase();
+          buffer = "";
+
+          const matched = products.find(
+            (p) =>
+              (p.barcode && p.barcode.toLowerCase() === code) ||
+              p.sku.toLowerCase() === code ||
+              p.name.toLowerCase() === code
+          );
+
+          if (matched) {
+            addToCart(matched, matched.barcode ? `${matched.barcode} - ${matched.name}` : matched.name, scanQty);
+          } else {
+            setSearchQuery(code);
+            setError(`No product found matching barcode "${code}"`);
+            if (soundEnabled) sounds.playWarningBuzz();
+          }
+        }
+        buffer = "";
+      } else if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        buffer += e.key;
+      }
+    }
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, [products, soundEnabled, cart, scanQty]);
+
+  function addToCart(product: any, displayOverride?: string, customQty?: number) {
     setError(null);
     if (product.stock <= 0) {
       if (soundEnabled) sounds.playWarningBuzz();
@@ -85,24 +140,46 @@ export function SaleForm({ products }: { products: any[] }) {
 
     if (soundEnabled) sounds.playScanBeep();
 
+    const addAmount = Math.max(1, customQty || scanQty || 1);
     const existing = cart.find((c) => c.product.id === product.id);
-    if (existing) {
-      if (existing.quantity >= product.stock) {
-        if (soundEnabled) sounds.playWarningBuzz();
-        setError(`Cannot add more. Only ${product.stock} units available in stock.`);
-        return;
-      }
-      setCart(cart.map((c) => (c.product.id === product.id ? { ...c, quantity: c.quantity + 1 } : c)));
-    } else {
-      setCart([...cart, { product, quantity: 1 }]);
+    const currentQty = existing ? existing.quantity : 0;
+    const requestedQty = currentQty + addAmount;
+
+    if (requestedQty > product.stock) {
+      if (soundEnabled) sounds.playWarningBuzz();
+      setError(`Cannot add ${addAmount} units. Only ${product.stock - currentQty} available in stock.`);
+      return;
     }
+
+    if (existing) {
+      setCart(cart.map((c) => (c.product.id === product.id ? { ...c, quantity: c.quantity + addAmount } : c)));
+    } else {
+      setCart([...cart, { product, quantity: addAmount }]);
+    }
+
+    // Set search box value to scanned product barcode / name so it appears in the scan barcode search box
+    const scannedText = displayOverride || (product.barcode ? `${product.barcode} - ${product.name}` : product.name);
+    setSearchQuery(scannedText);
+
+    // Focus and select the text in search input so subsequent scan overwrites automatically
+    setTimeout(() => {
+      if (searchInputRef.current) {
+        searchInputRef.current.focus();
+        searchInputRef.current.select();
+      }
+    }, 50);
   }
 
   function handleSearchKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Enter" && filteredProducts.length > 0) {
+    if (e.key === "Enter") {
       e.preventDefault();
-      addToCart(filteredProducts[0]);
-      setSearchQuery("");
+      if (filteredProducts.length > 0) {
+        const matched = filteredProducts[0];
+        addToCart(matched, searchQuery || (matched.barcode ? `${matched.barcode} - ${matched.name}` : matched.name), scanQty);
+      } else if (searchQuery.trim()) {
+        if (soundEnabled) sounds.playWarningBuzz();
+        setError(`No product found matching barcode or query "${searchQuery}"`);
+      }
     }
   }
 
@@ -172,6 +249,9 @@ export function SaleForm({ products }: { products: any[] }) {
       });
 
       if (soundEnabled) sounds.playSaleSuccess();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("inventory:change"));
+      }
 
       setLastCompletedSale({
         saleNumber: res.saleNumber,
@@ -203,9 +283,10 @@ export function SaleForm({ products }: { products: any[] }) {
   }
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: 20, alignItems: "start" }}>
-      {/* LEFT COLUMN: Product Catalog & Scanner */}
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1.6fr", gap: 20, alignItems: "start" }}>
+      {/* LEFT COLUMN: Category Browser + Product Grid */}
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
         {/* Search Bar & Scanner */}
         <div className="card" style={{ padding: 14 }}>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -215,9 +296,12 @@ export function SaleForm({ products }: { products: any[] }) {
                 ref={searchInputRef}
                 type="text"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  if (e.target.value) setSelectedCategory("ALL");
+                }}
                 onKeyDown={handleSearchKeyDown}
-                placeholder="Scan barcode, SKU, or search item name... (Press Enter to add)"
+                placeholder="Scan barcode or search product name..."
                 className="form-input"
                 style={{ paddingLeft: 38, margin: 0, fontSize: "0.88rem" }}
               />
@@ -227,126 +311,168 @@ export function SaleForm({ products }: { products: any[] }) {
                 </button>
               )}
             </div>
-
-            {/* Sound Toggle */}
+            <div style={{ display: "flex", alignItems: "center", gap: 4, background: "var(--gray-100)", padding: "2px 8px", borderRadius: 8, border: "1px solid var(--gray-200)" }}>
+              <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--gray-600)" }}>Qty:</span>
+              <input
+                type="number"
+                min="1"
+                value={scanQty}
+                onChange={(e) => setScanQty(Math.max(1, parseInt(e.target.value) || 1))}
+                style={{ width: 44, border: "none", background: "transparent", fontSize: "0.88rem", fontWeight: 800, color: "var(--brand-700)", textAlign: "center", outline: "none" }}
+                title="Quantity to add when scanning or clicking a product"
+              />
+            </div>
             <button
               onClick={() => setSoundEnabled(!soundEnabled)}
               className="btn btn-secondary btn-sm"
-              title={soundEnabled ? "Mute scan sound effects" : "Enable scan sound effects"}
+              title={soundEnabled ? "Mute sounds" : "Enable sounds"}
               style={{ padding: "8px 10px" }}
             >
               {soundEnabled ? <Volume2 size={16} style={{ color: "var(--brand-600)" }} /> : <VolumeX size={16} style={{ color: "var(--gray-400)" }} />}
             </button>
           </div>
-
-          {/* Category Chips */}
-          <div style={{ display: "flex", gap: 6, overflowX: "auto", marginTop: 12, paddingBottom: 2 }}>
-            {categories.map((cat) => (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => setSelectedCategory(cat)}
-                style={{
-                  padding: "5px 12px",
-                  borderRadius: 999,
-                  fontSize: "0.74rem",
-                  fontWeight: selectedCategory === cat ? 700 : 500,
-                  background: selectedCategory === cat ? "var(--brand-600)" : "var(--gray-100)",
-                  color: selectedCategory === cat ? "#fff" : "var(--gray-700)",
-                  border: "none",
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                  transition: "all 0.15s ease",
-                }}
-              >
-                {cat}
-              </button>
-            ))}
-          </div>
         </div>
 
-        {/* Product Grid */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12, maxHeight: 520, overflowY: "auto", paddingRight: 4 }}>
-          {filteredProducts.length === 0 ? (
-            <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: "40px 20px", color: "var(--gray-400)", background: "#fff", borderRadius: 12, border: "1px dashed var(--gray-200)" }}>
-              <Package size={32} style={{ margin: "0 auto 8px", opacity: 0.4 }} />
-              <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>No matching catalog products</div>
-              <div style={{ fontSize: "0.75rem", marginTop: 2 }}>Try searching with another keyword or SKU</div>
+        {/* CATEGORY CARDS VIEW — shown when no search and no specific category selected */}
+        {!searchQuery && selectedCategory === "ALL" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--gray-500)", textTransform: "uppercase", letterSpacing: "0.06em", paddingLeft: 2 }}>
+              Browse by Category
             </div>
-          ) : (
-            filteredProducts.map((p) => {
-              const inStock = p.stock > 0;
-              const cartItem = cart.find((c) => c.product.id === p.id);
-              const currentQty = cartItem?.quantity || 0;
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
+              {categories.filter(c => c !== "ALL").map((cat, idx) => {
+                const catProducts = products.filter(p => p.categoryName === cat);
+                const inStockCount = catProducts.filter(p => p.stock > 0).length;
+                const palette = [
+                  { bg: "linear-gradient(135deg, #6366f1, #818cf8)", icon: <Monitor size={28} color="#fff" /> },
+                  { bg: "linear-gradient(135deg, #0ea5e9, #38bdf8)", icon: <Smartphone size={28} color="#fff" /> },
+                  { bg: "linear-gradient(135deg, #10b981, #34d399)", icon: <Printer size={28} color="#fff" /> },
+                  { bg: "linear-gradient(135deg, #f59e0b, #fbbf24)", icon: <Plug size={28} color="#fff" /> },
+                  { bg: "linear-gradient(135deg, #ef4444, #f87171)", icon: <HardDrive size={28} color="#fff" /> },
+                  { bg: "linear-gradient(135deg, #8b5cf6, #a78bfa)", icon: <Keyboard size={28} color="#fff" /> },
+                  { bg: "linear-gradient(135deg, #ec4899, #f472b6)", icon: <Mouse size={28} color="#fff" /> },
+                  { bg: "linear-gradient(135deg, #14b8a6, #2dd4bf)", icon: <Camera size={28} color="#fff" /> },
+                  { bg: "linear-gradient(135deg, #f97316, #fb923c)", icon: <Laptop size={28} color="#fff" /> },
+                  { bg: "linear-gradient(135deg, #06b6d4, #22d3ee)", icon: <Headphones size={28} color="#fff" /> },
+                  { bg: "linear-gradient(135deg, #84cc16, #a3e635)", icon: <Cpu size={28} color="#fff" /> },
+                  { bg: "linear-gradient(135deg, #64748b, #94a3b8)", icon: <Package size={28} color="#fff" /> },
+                ];
+                const p = palette[idx % palette.length];
+                return (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setSelectedCategory(cat)}
+                    style={{
+                      background: p.bg,
+                      border: "none",
+                      borderRadius: 12,
+                      padding: "18px 16px",
+                      cursor: "pointer",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "flex-start",
+                      gap: 8,
+                      transition: "all 0.18s ease",
+                      boxShadow: "0 4px 14px rgba(0,0,0,0.12)",
+                      textAlign: "left",
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.transform = "translateY(-3px) scale(1.02)")}
+                    onMouseLeave={e => (e.currentTarget.style.transform = "translateY(0) scale(1)")}
+                  >
+                    <span style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 44, height: 44, borderRadius: 10, background: "rgba(255,255,255,0.18)", backdropFilter: "blur(4px)", flexShrink: 0 }}>
+                      {p.icon}
+                    </span>
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: "0.9rem", color: "#fff", lineHeight: 1.2 }}>{cat}</div>
+                      <div style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.8)", marginTop: 3 }}>
+                        {catProducts.length} products · {inStockCount} in stock
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
-              return (
-                <div
-                  key={p.id}
-                  onClick={() => addToCart(p)}
-                  style={{
-                    background: inStock ? "#fff" : "var(--gray-50)",
-                    border: currentQty > 0 ? "2px solid var(--brand-500)" : "1px solid var(--gray-200)",
-                    borderRadius: 10,
-                    padding: 12,
-                    cursor: inStock ? "pointer" : "not-allowed",
-                    opacity: inStock ? 1 : 0.6,
-                    display: "flex",
-                    flexDirection: "column",
-                    justifyContent: "space-between",
-                    position: "relative",
-                    transition: "all 0.15s ease",
-                    boxShadow: currentQty > 0 ? "0 2px 8px rgba(99, 102, 241, 0.15)" : "none",
-                  }}
-                >
-                  {currentQty > 0 && (
+        {/* PRODUCT GRID VIEW — shown when a category is selected OR search is active */}
+        {(selectedCategory !== "ALL" || searchQuery) && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {/* Header with back button */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => { setSelectedCategory("ALL"); setSearchQuery(""); }}
+                style={{ background: "var(--gray-100)", border: "1px solid var(--gray-200)", borderRadius: 6, padding: "4px 10px", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer", color: "var(--gray-700)", display: "flex", alignItems: "center", gap: 4 }}
+              >
+                ← Back
+              </button>
+              <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--gray-800)" }}>
+                {searchQuery ? `Search: "${searchQuery}"` : selectedCategory}
+                <span style={{ fontWeight: 400, color: "var(--gray-400)", marginLeft: 6 }}>({filteredProducts.length} items)</span>
+              </span>
+            </div>
+
+            {/* Products */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10, maxHeight: 480, overflowY: "auto", paddingRight: 4 }}>
+              {filteredProducts.length === 0 ? (
+                <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: "40px 20px", color: "var(--gray-400)", background: "var(--bg-card)", borderRadius: 12, border: "1px dashed var(--gray-200)" }}>
+                  <Package size={32} style={{ margin: "0 auto 8px", opacity: 0.4 }} />
+                  <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>No products found</div>
+                </div>
+              ) : (
+                filteredProducts.map((p) => {
+                  const inStock = p.stock > 0;
+                  const cartItem = cart.find((c) => c.product.id === p.id);
+                  const currentQty = cartItem?.quantity || 0;
+                  return (
                     <div
+                      key={p.id}
+                      onClick={() => addToCart(p)}
                       style={{
-                        position: "absolute",
-                        top: 8,
-                        right: 8,
-                        background: "var(--brand-600)",
-                        color: "#fff",
-                        width: 22,
-                        height: 22,
-                        borderRadius: "50%",
-                        fontSize: "0.72rem",
-                        fontWeight: 800,
+                        background: inStock ? "var(--bg-card)" : "var(--gray-50)",
+                        border: currentQty > 0 ? "2px solid var(--brand-500)" : "1px solid var(--gray-200)",
+                        borderRadius: 10,
+                        padding: 12,
+                        cursor: inStock ? "pointer" : "not-allowed",
+                        opacity: inStock ? 1 : 0.6,
                         display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
+                        flexDirection: "column",
+                        justifyContent: "space-between",
+                        position: "relative",
+                        transition: "all 0.15s ease",
+                        boxShadow: currentQty > 0 ? "0 2px 8px rgba(99, 102, 241, 0.15)" : "none",
+                        minHeight: 100,
                       }}
                     >
-                      {currentQty}
-                    </div>
-                  )}
-
-                  <div>
-                    <div style={{ fontSize: "0.68rem", color: "var(--gray-400)", fontWeight: 600, textTransform: "uppercase" }}>
-                      {p.sku}
-                    </div>
-                    <div style={{ fontSize: "0.84rem", fontWeight: 700, color: "var(--gray-900)", marginTop: 2, lineHeight: 1.3 }}>
-                      {p.name}
-                    </div>
-                  </div>
-
-                  <div style={{ marginTop: 14, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
-                    <div>
-                      <div style={{ fontSize: "0.92rem", fontWeight: 800, color: "var(--brand-700)" }}>
-                        {formatCFA(p.sellingPrice)}
+                      {currentQty > 0 && (
+                        <div style={{ position: "absolute", top: 7, right: 7, background: "var(--brand-600)", color: "#fff", width: 20, height: 20, borderRadius: "50%", fontSize: "0.68rem", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          {currentQty}
+                        </div>
+                      )}
+                      <div>
+                        <div style={{ fontSize: "0.65rem", color: "var(--gray-400)", fontWeight: 600, textTransform: "uppercase" }}>{p.sku}</div>
+                        <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--gray-900)", marginTop: 2, lineHeight: 1.3 }}>{p.name}</div>
                       </div>
-                      <div style={{ fontSize: "0.68rem", color: inStock ? (p.stock < 5 ? "var(--warning)" : "var(--success)") : "var(--danger)", fontWeight: 600 }}>
-                        {inStock ? `${p.stock} in stock` : "Out of stock"}
+                      <div style={{ marginTop: 10, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+                        <div>
+                          <div style={{ fontSize: "0.88rem", fontWeight: 800, color: "var(--brand-700)" }}>{formatCFA(p.sellingPrice)}</div>
+                          <div style={{ fontSize: "0.65rem", color: inStock ? (p.stock < 5 ? "var(--warning)" : "var(--success)") : "var(--danger)", fontWeight: 600 }}>
+                            {inStock ? `${p.stock} left` : "Out of stock"}
+                          </div>
+                        </div>
+                        <div style={{ width: 24, height: 24, borderRadius: 6, background: "var(--brand-50)", color: "var(--brand-600)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          <Plus size={13} />
+                        </div>
                       </div>
                     </div>
-                    <div style={{ width: 26, height: 26, borderRadius: 6, background: "var(--brand-50)", color: "var(--brand-600)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      <Plus size={14} />
-                    </div>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Held Orders List */}
         {heldOrders.length > 0 && (
@@ -358,17 +484,7 @@ export function SaleForm({ products }: { products: any[] }) {
               {heldOrders.map((h) => (
                 <div
                   key={h.id}
-                  style={{
-                    background: "var(--gray-50)",
-                    border: "1px solid var(--gray-200)",
-                    borderRadius: 8,
-                    padding: "8px 12px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    fontSize: "0.78rem",
-                    flexShrink: 0,
-                  }}
+                  style={{ background: "var(--gray-50)", border: "1px solid var(--gray-200)", borderRadius: 8, padding: "8px 12px", display: "flex", alignItems: "center", gap: 10, fontSize: "0.78rem", flexShrink: 0 }}
                 >
                   <div>
                     <div style={{ fontWeight: 700 }}>{h.id} • {h.total ? formatCFA(h.total) : ""}</div>
@@ -385,7 +501,19 @@ export function SaleForm({ products }: { products: any[] }) {
       </div>
 
       {/* RIGHT COLUMN: Active Cart, Tender & Checkout */}
-      <div className="card" style={{ padding: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      <div
+        className="card"
+        style={{
+          padding: 0,
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+          position: "sticky",
+          top: 24,
+          maxHeight: "calc(100vh - 120px)",
+          overflowY: "auto",
+        }}
+      >
         {/* Cart Header */}
         <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--gray-200)", background: "var(--gray-50)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
@@ -413,7 +541,7 @@ export function SaleForm({ products }: { products: any[] }) {
         )}
 
         {/* Cart Items List */}
-        <div style={{ flex: 1, minHeight: 200, maxHeight: 300, overflowY: "auto", padding: "12px 20px" }}>
+        <div style={{ flex: 1, minHeight: 120, maxHeight: 320, overflowY: "auto", padding: "12px 20px" }}>
           {cart.length === 0 ? (
             <div style={{ textAlign: "center", padding: "36px 10px", color: "var(--gray-400)" }}>
               <ShoppingCart size={32} style={{ margin: "0 auto 8px", opacity: 0.3 }} />
@@ -448,7 +576,7 @@ export function SaleForm({ products }: { products: any[] }) {
 
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       {/* Qty Controls */}
-                      <div style={{ display: "flex", alignItems: "center", background: "#fff", border: "1px solid var(--gray-300)", borderRadius: 6 }}>
+                      <div style={{ display: "flex", alignItems: "center", background: "var(--bg-card)", border: "1px solid var(--gray-300)", borderRadius: 6 }}>
                         <button
                           type="button"
                           onClick={() => updateQuantity(item.product.id, item.quantity - 1, item.product.stock)}
@@ -490,7 +618,7 @@ export function SaleForm({ products }: { products: any[] }) {
         </div>
 
         {/* Customer & Discount Fields (Collapsible/Optional) */}
-        <div style={{ padding: "12px 20px", borderTop: "1px solid var(--gray-200)", background: "#fff" }}>
+        <div style={{ padding: "12px 20px", borderTop: "1px solid var(--gray-200)", background: "var(--bg-card)" }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 8 }}>
             <div>
               <label style={{ fontSize: "0.7rem", fontWeight: 600, color: "var(--gray-600)", display: "block", marginBottom: 2 }}>
@@ -549,7 +677,7 @@ export function SaleForm({ products }: { products: any[] }) {
           <label style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--gray-700)", textTransform: "uppercase", display: "block", marginBottom: 8 }}>
             Payment Method
           </label>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6 }}>
             <button
               type="button"
               onClick={() => setPaymentMethod("CASH")}
@@ -557,7 +685,7 @@ export function SaleForm({ products }: { products: any[] }) {
                 padding: "8px 6px",
                 borderRadius: 6,
                 border: paymentMethod === "CASH" ? "2px solid var(--brand-600)" : "1px solid var(--gray-200)",
-                background: paymentMethod === "CASH" ? "var(--brand-50)" : "#fff",
+                background: paymentMethod === "CASH" ? "var(--brand-50)" : "var(--bg-card)",
                 color: paymentMethod === "CASH" ? "var(--brand-700)" : "var(--gray-700)",
                 fontSize: "0.75rem",
                 fontWeight: 700,
@@ -568,7 +696,8 @@ export function SaleForm({ products }: { products: any[] }) {
                 gap: 4,
               }}
             >
-              <DollarSign size={16} /> Cash (Espèces)
+              <DollarSign size={15} />
+              <span style={{ textAlign: "center", lineHeight: 1.2 }}>Cash</span>
             </button>
 
             <button
@@ -578,7 +707,7 @@ export function SaleForm({ products }: { products: any[] }) {
                 padding: "8px 6px",
                 borderRadius: 6,
                 border: paymentMethod === "MTN_MOMO" ? "2px solid #eab308" : "1px solid var(--gray-200)",
-                background: paymentMethod === "MTN_MOMO" ? "#fefce8" : "#fff",
+                background: paymentMethod === "MTN_MOMO" ? "rgba(234, 179, 8, 0.15)" : "var(--bg-card)",
                 color: paymentMethod === "MTN_MOMO" ? "#a16207" : "var(--gray-700)",
                 fontSize: "0.75rem",
                 fontWeight: 700,
@@ -589,7 +718,8 @@ export function SaleForm({ products }: { products: any[] }) {
                 gap: 4,
               }}
             >
-              <Smartphone size={16} /> MTN MoMo
+              <Smartphone size={15} />
+              <span style={{ textAlign: "center", lineHeight: 1.2 }}>MTN MoMo</span>
             </button>
 
             <button
@@ -599,7 +729,7 @@ export function SaleForm({ products }: { products: any[] }) {
                 padding: "8px 6px",
                 borderRadius: 6,
                 border: paymentMethod === "ORANGE_MONEY" ? "2px solid #f97316" : "1px solid var(--gray-200)",
-                background: paymentMethod === "ORANGE_MONEY" ? "#fff7ed" : "#fff",
+                background: paymentMethod === "ORANGE_MONEY" ? "rgba(249, 115, 22, 0.15)" : "var(--bg-card)",
                 color: paymentMethod === "ORANGE_MONEY" ? "#c2410c" : "var(--gray-700)",
                 fontSize: "0.75rem",
                 fontWeight: 700,
@@ -610,7 +740,8 @@ export function SaleForm({ products }: { products: any[] }) {
                 gap: 4,
               }}
             >
-              <Smartphone size={16} /> Orange Money
+              <Smartphone size={15} />
+              <span style={{ textAlign: "center", lineHeight: 1.2 }}>Orange</span>
             </button>
 
             <button
@@ -620,7 +751,7 @@ export function SaleForm({ products }: { products: any[] }) {
                 padding: "8px 6px",
                 borderRadius: 6,
                 border: paymentMethod === "CARD" ? "2px solid var(--brand-600)" : "1px solid var(--gray-200)",
-                background: paymentMethod === "CARD" ? "var(--brand-50)" : "#fff",
+                background: paymentMethod === "CARD" ? "var(--brand-50)" : "var(--bg-card)",
                 color: paymentMethod === "CARD" ? "var(--brand-700)" : "var(--gray-700)",
                 fontSize: "0.75rem",
                 fontWeight: 700,
@@ -631,7 +762,8 @@ export function SaleForm({ products }: { products: any[] }) {
                 gap: 4,
               }}
             >
-              <CreditCard size={16} /> Bank Card
+              <CreditCard size={15} />
+              <span style={{ textAlign: "center", lineHeight: 1.2 }}>Card</span>
             </button>
 
             <button
@@ -641,7 +773,7 @@ export function SaleForm({ products }: { products: any[] }) {
                 padding: "8px 6px",
                 borderRadius: 6,
                 border: paymentMethod === "BANK_TRANSFER" ? "2px solid var(--brand-600)" : "1px solid var(--gray-200)",
-                background: paymentMethod === "BANK_TRANSFER" ? "var(--brand-50)" : "#fff",
+                background: paymentMethod === "BANK_TRANSFER" ? "var(--brand-50)" : "var(--bg-card)",
                 color: paymentMethod === "BANK_TRANSFER" ? "var(--brand-700)" : "var(--gray-700)",
                 fontSize: "0.75rem",
                 fontWeight: 700,
@@ -652,13 +784,14 @@ export function SaleForm({ products }: { products: any[] }) {
                 gap: 4,
               }}
             >
-              <Building2 size={16} /> Virement
+              <Building2 size={15} />
+              <span style={{ textAlign: "center", lineHeight: 1.2 }}>Virement</span>
             </button>
           </div>
 
           {/* Cash Tendered & Change Return Calculator */}
           {paymentMethod === "CASH" && (
-            <div style={{ marginTop: 12, padding: 10, background: "#fff", borderRadius: 8, border: "1px solid var(--gray-200)" }}>
+            <div style={{ marginTop: 12, padding: 10, background: "var(--bg-card)", borderRadius: 8, border: "1px solid var(--gray-200)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                 <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--gray-700)" }}>Cash Received (CFA):</span>
                 {changeAmount > 0 && (
@@ -702,7 +835,7 @@ export function SaleForm({ products }: { products: any[] }) {
         </div>
 
         {/* Pricing Summary & Checkout Button */}
-        <div style={{ padding: "16px 20px", borderTop: "1px solid var(--gray-200)", background: "#fff" }}>
+        <div style={{ padding: "16px 20px", borderTop: "1px solid var(--gray-200)", background: "var(--bg-card)" }}>
           {discountAmount > 0 && (
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", color: "var(--gray-500)", marginBottom: 4 }}>
               <span>Subtotal:</span>

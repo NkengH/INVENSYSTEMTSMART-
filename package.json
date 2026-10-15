@@ -6,7 +6,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --no-warnings ./node_modules/vitest/vitest.mjs run",
+    "test:verbose": "node --no-warnings ./node_modules/vitest/vitest.mjs run --reporter=verbose",
+    "test:watch": "node --no-warnings ./node_modules/vitest/vitest.mjs",
+    "test:coverage": "node --no-warnings ./node_modules/vitest/vitest.mjs run --coverage"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -27,13 +31,21 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.1.17",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
     "@types/node": "22.19.15",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
+    "@types/supertest": "^7.2.1",
+    "@vitejs/plugin-react": "^6.1.1",
+    "@vitest/coverage-v8": "^5.0.1",
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.6",
+    "jsdom": "^30.0.1",
     "postcss": "8.5.8",
+    "supertest": "^7.2.2",
     "tailwindcss": "4.1.17",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "vitest": "^5.0.1"
   }
 }

@@ -35,7 +35,6 @@ const functionGroups: FunctionGroup[] = [
   {
     category: "Stock Operations",
     functions: [
-      { name: "Receive Stock", permissionKey: "inventory.receive", description: "Confirm incoming goods from approved purchase orders" },
       { name: "Issue Stock", permissionKey: "inventory.issue", description: "Authorize and issue stock from warehouse" },
       { name: "Manage Stock Movements", permissionKey: "inventory.movement.view", description: "Traceable digital stock ledger of all events" },
       { name: "View Inventory", permissionKey: "inventory.view", description: "Search products and view available stock" },
@@ -61,7 +60,7 @@ export default function AdminRolesPage() {
         <div className="page-header-left">
           <h1 className="page-title">Roles &amp; Permissions Matrix</h1>
           <p className="page-subtitle">
-            Strict separation of responsibilities across the 3 system actors
+            Hierarchical permission model with cashier activity inheritance for Inventory Managers and Administrators
           </p>
         </div>
       </div>

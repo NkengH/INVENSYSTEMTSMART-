@@ -5,8 +5,13 @@ import { User } from "@/db/schema";
 
 const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || "fallback_secret_for_development_only");
 
-export async function createSession(userId: string, role: string, username: string) {
-  const token = await new SignJWT({ userId, role, username })
+export async function createSession(
+  userId: string,
+  role: string,
+  username: string,
+  mustChangePassword: boolean = false
+) {
+  const token = await new SignJWT({ userId, role, username, mustChangePassword })
     .setProtectedHeader({ alg: "HS256" })
     .setExpirationTime("1d")
     .sign(JWT_SECRET);
@@ -26,7 +31,12 @@ export async function getSession() {
 
   try {
     const verified = await jwtVerify(token, JWT_SECRET);
-    return verified.payload as { userId: string; role: string; username: string };
+    return verified.payload as {
+      userId: string;
+      role: string;
+      username: string;
+      mustChangePassword?: boolean;
+    };
   } catch (err) {
     return null;
   }

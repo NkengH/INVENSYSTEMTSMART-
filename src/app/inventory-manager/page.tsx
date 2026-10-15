@@ -1,14 +1,27 @@
 import { connectToDatabase } from "@/db";
-import { Product, Inventory, Purchase } from "@/db/schema";
-import { Package, AlertTriangle, ShoppingCart, TrendingUp } from "lucide-react";
+import { Product, Inventory, StockMovement } from "@/db/schema";
+import { Package, AlertTriangle, Layers, ArrowRightLeft, CreditCard, ShoppingCart, Box } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
 export default async function InvManagerDashboard() {
   await connectToDatabase();
-  const totalProducts   = await Product.countDocuments();
-  const totalPurchases  = await Purchase.countDocuments();
-  const activePurchases = await Purchase.countDocuments({ status: { $in: ["Submitted", "Partially Received"] } });
+  const totalProducts = await Product.countDocuments();
+
+  const inventoryStats = await Inventory.aggregate([
+    {
+      $group: {
+        _id: null,
+        totalUnits: { $sum: "$quantity" },
+        outOfStock: {
+          $sum: { $cond: [{ $lte: ["$quantity", 0] }, 1, 0] },
+        },
+      },
+    },
+  ]);
+
+  const totalStockUnits = inventoryStats[0]?.totalUnits || 0;
+  const outOfStockCount = inventoryStats[0]?.outOfStock || 0;
 
   const lowStockCount = await Inventory.aggregate([
     { $lookup: { from: "products", localField: "productId", foreignField: "_id", as: "product" } },
@@ -18,12 +31,14 @@ export default async function InvManagerDashboard() {
   ]);
   const lowStock = lowStockCount[0]?.count || 0;
 
+  const recentMovementsCount = await StockMovement.countDocuments();
+
   return (
     <>
       <div className="page-header">
         <div className="page-header-left">
           <h1 className="page-title">Inventory Manager Dashboard</h1>
-          <p className="page-subtitle">Monitor stock levels, products, and purchase orders</p>
+          <p className="page-subtitle">Monitor warehouse stock levels, products, and inventory operations</p>
         </div>
       </div>
 
@@ -37,29 +52,38 @@ export default async function InvManagerDashboard() {
         </div>
 
         <div className="stat-card">
-          <div className="stat-card-icon" style={{ background: lowStock > 0 ? "#fef3c7" : "#d1fae5", color: lowStock > 0 ? "#d97706" : "#059669" }}>
-            <AlertTriangle size={20} />
+          <div className="stat-card-icon" style={{ background: "#ede9fe", color: "#7c3aed" }}>
+            <Layers size={20} />
           </div>
-          <div className="stat-card-label">Low Stock Alerts</div>
-          <div className="stat-card-value" style={{ color: lowStock > 0 ? "var(--warning)" : "var(--success)" }}>{lowStock}</div>
-          <div className="stat-card-sub">{lowStock > 0 ? "Items need restocking" : "All items well stocked"}</div>
-          <div className="stat-card-accent" style={{ background: lowStock > 0 ? "#d97706" : "#059669" }} />
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-card-icon purple"><ShoppingCart size={20} /></div>
-          <div className="stat-card-label">Purchase Orders</div>
-          <div className="stat-card-value">{totalPurchases}</div>
-          <div className="stat-card-sub">All time orders</div>
+          <div className="stat-card-label">Total Stock Units</div>
+          <div className="stat-card-value" style={{ color: "#7c3aed" }}>{totalStockUnits.toLocaleString()}</div>
+          <div className="stat-card-sub">Units available in warehouse</div>
           <div className="stat-card-accent" style={{ background: "#7c3aed" }} />
         </div>
 
+        <a
+          href="/inventory-manager/purchases"
+          className="stat-card"
+          style={{ textDecoration: "none", cursor: "pointer", display: "block" }}
+          title="Click to open Purchase Management"
+        >
+          <div className="stat-card-icon" style={{ background: lowStock > 0 ? "#fef3c7" : "#d1fae5", color: lowStock > 0 ? "#d97706" : "#059669" }}>
+            <AlertTriangle size={20} />
+          </div>
+          <div className="stat-card-label">Low Stock (Purchases Needed)</div>
+          <div className="stat-card-value" style={{ color: lowStock > 0 ? "var(--warning)" : "var(--success)" }}>{lowStock}</div>
+          <div className="stat-card-sub">{lowStock > 0 ? `${lowStock} products need purchase →` : "All items well stocked"}</div>
+          <div className="stat-card-accent" style={{ background: lowStock > 0 ? "#d97706" : "#059669" }} />
+        </a>
+
         <div className="stat-card">
-          <div className="stat-card-icon amber"><TrendingUp size={20} /></div>
-          <div className="stat-card-label">Pending Reception</div>
-          <div className="stat-card-value">{activePurchases}</div>
-          <div className="stat-card-sub">Awaiting delivery</div>
-          <div className="stat-card-accent" style={{ background: "#d97706" }} />
+          <div className="stat-card-icon teal" style={{ background: "#ccfbf1", color: "#0d9488" }}>
+            <ArrowRightLeft size={20} />
+          </div>
+          <div className="stat-card-label">Stock Movements</div>
+          <div className="stat-card-value" style={{ color: "#0d9488" }}>{recentMovementsCount}</div>
+          <div className="stat-card-sub">All-time audit ledger events</div>
+          <div className="stat-card-accent" style={{ background: "#0d9488" }} />
         </div>
       </div>
 
@@ -68,12 +92,13 @@ export default async function InvManagerDashboard() {
           <div className="card-header-title">Quick Actions</div>
         </div>
         <div className="card-body" style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <a href="/inventory-manager/purchases" className="btn btn-primary" style={{ background: "#d97706", borderColor: "#b45309" }}><ShoppingCart size={15} /> Purchase Management</a>
           <a href="/inventory-manager/products"  className="btn btn-primary"><Package size={15} /> Add Product</a>
-          <a href="/inventory-manager/reception" className="btn btn-success">Receive Stock</a>
-          <a href="/inventory-manager/issuance"  className="btn btn-secondary">Issue Stock</a>
-          <a href="/inventory-manager/movements" className="btn btn-secondary">Stock Movements</a>
-          <a href="/inventory-manager/purchases" className="btn btn-secondary"><ShoppingCart size={15} /> Purchase Orders</a>
-          <a href="/inventory-manager/inventory" className="btn btn-secondary">View Inventory</a>
+          <a href="/inventory-manager/issuance"  className="btn btn-secondary"><Box size={15} /> Issue Stock</a>
+          <a href="/inventory-manager/inventory" className="btn btn-secondary"><Layers size={15} /> View Inventory</a>
+          <a href="/inventory-manager/movements" className="btn btn-secondary"><ArrowRightLeft size={15} /> Stock Movements</a>
+          <a href="/cashier/sales"               className="btn btn-success"><ShoppingCart size={15} /> POS Sales</a>
+          <a href="/cashier/till"                className="btn btn-secondary"><CreditCard size={15} /> Till Session</a>
           <a href="/inventory-manager/reports"   className="btn btn-secondary">Reports</a>
         </div>
       </div>
