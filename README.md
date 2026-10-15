@@ -65,6 +65,7 @@
 - **Warehouse Purchase Orders (PO):** Multi-item order creation, supplier status tracking (`Pending`, `Received`, `Cancelled`), and automated stock increment upon delivery.
 - **Internal Issuance Flow:** Move stock safely between central storage and sales counters with authorized issuer and receiver logging.
 - **Multi-Factor Stock Adjustments:** Instant manual count updates with mandatory reason codes (Breakage, Expiry, Audit Count, Theft) generating immutable `StockMovement` records.
+- **Shelf Barcode & QR Label Printing Studio:** In-browser designer and batch printer for machine-scannable Code 128 linear barcodes, 2D QR codes, and shelf price tags with live zoom preview and presets (50x30mm, 38x25mm, A4 24-label sheets, 58mm/80mm thermal rolls).
 - **Automated Stock Alerts:** Real-time visual warnings for items below minimum stock threshold (`<= minimumStock`) or out of stock.
 
 ### 🤖 Google Gemini AI Co-Pilot

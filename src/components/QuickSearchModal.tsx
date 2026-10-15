@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Search, X, ArrowRight, Package, ShoppingCart, BarChart3,
-  Users, Layers, ArrowRightLeft, Sparkles, BrainCircuit, CreditCard
+  Users, Layers, ArrowRightLeft, Sparkles, BrainCircuit, CreditCard, QrCode
 } from "lucide-react";
 
 interface SearchResult {
@@ -24,6 +24,7 @@ const SEARCH_ITEMS: SearchResult[] = [
   { id: "5", title: "Product Catalog", category: "Navigation", href: "/inventory-manager/products", icon: Package, hint: "Browse all items" },
   { id: "6", title: "Stock Overview", category: "Navigation", href: "/inventory-manager/inventory", icon: Layers, hint: "View current balances" },
   { id: "7", title: "Stock Movements & Transfers", category: "Navigation", href: "/inventory-manager/movements", icon: ArrowRightLeft, hint: "Stock logs" },
+  { id: "8", title: "Barcode & Shelf Label Studio", category: "Navigation", href: "/inventory-manager/labels", icon: QrCode, hint: "Generate & print price tags & QR codes" },
   { id: "9", title: "AI Inventory Analyst", category: "Navigation", href: "/inventory-manager/ai", icon: BrainCircuit, hint: "Ask AI predictions" },
   { id: "10", title: "Financial & Stock Reports", category: "Navigation", href: "/inventory-manager/reports", icon: BarChart3, hint: "Analytics" },
   { id: "11", title: "User Management", category: "Navigation", href: "/admin/users", icon: Users, hint: "Manage employee accounts" },

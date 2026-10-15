@@ -2,11 +2,13 @@
 
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { formatCFA } from "@/lib/format";
 import { adjustStock, AdjustStockPayload } from "@/app/actions/adjustments";
+import { generateBarcodeSVG } from "@/lib/barcode";
 import {
   Search, X, Package, Layers, AlertTriangle, CheckCircle, XCircle,
-  Sliders, Printer, Download, Tag, Check, RefreshCw, Sparkles
+  Sliders, Printer, Download, Tag, Check, RefreshCw, Sparkles, ExternalLink
 } from "lucide-react";
 
 export interface InventoryRow {
@@ -574,6 +576,13 @@ export function InventoryTable({ rows }: { rows: InventoryRow[] }) {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 20px", borderBottom: "1px solid var(--gray-200)", background: "var(--gray-50)" }} className="no-print">
               <span style={{ fontWeight: 700, color: "var(--gray-900)", fontSize: "0.95rem" }}>Shelf Price Tag</span>
               <div style={{ display: "flex", gap: 8 }}>
+                <Link
+                  href={`/inventory-manager/labels?sku=${tagProduct.sku}`}
+                  className="btn btn-secondary btn-sm"
+                  style={{ display: "flex", alignItems: "center", gap: 4 }}
+                >
+                  <ExternalLink size={13} /> Label Studio
+                </Link>
                 <button onClick={() => window.print()} className="btn btn-primary btn-sm">
                   <Printer size={14} /> Print Tag
                 </button>
@@ -604,30 +613,32 @@ export function InventoryTable({ rows }: { rows: InventoryRow[] }) {
                 }}
               >
                 <div style={{ fontSize: "0.68rem", fontWeight: 800, letterSpacing: "0.08em", color: "#6b7280", textTransform: "uppercase" }}>
-                  INVENSMART â€¢ MAC COMPUTERS
+                  INVENSMART • AIRFORCE COMPUTER
                 </div>
                 <div style={{ fontSize: "1.05rem", fontWeight: 900, color: "#111", margin: "8px 0 4px", lineHeight: 1.2 }}>
                   {tagProduct.name}
                 </div>
-                <div className="mono" style={{ fontSize: "0.8rem", color: "#4b5563", fontWeight: 700, marginBottom: 12 }}>
+                <div className="mono" style={{ fontSize: "0.8rem", color: "#4b5563", fontWeight: 700, marginBottom: 10 }}>
                   SKU: {tagProduct.sku}
                 </div>
 
-                {/* Simulated Barcode */}
+                {/* Real SVG Code 128 Barcode */}
                 <div
                   style={{
-                    letterSpacing: "5px",
-                    fontWeight: 900,
-                    fontSize: "1.2rem",
-                    border: "1px solid #333",
-                    padding: "6px 12px",
-                    borderRadius: 4,
-                    display: "inline-block",
+                    display: "flex",
+                    justifyContent: "center",
                     marginBottom: 10,
                   }}
-                >
-                  *||| | |||| | |||||| || |*
-                </div>
+                  dangerouslySetInnerHTML={{
+                    __html: generateBarcodeSVG({
+                      text: tagProduct.barcode || tagProduct.sku,
+                      height: 44,
+                      moduleWidth: 1.5,
+                      includeText: true,
+                      color: "#000000",
+                    }).svgContent,
+                  }}
+                />
 
                 <div style={{ fontSize: "1.5rem", fontWeight: 900, color: "#000", marginTop: 4 }}>
                   {formatCFA(tagProduct.sellingPrice)}

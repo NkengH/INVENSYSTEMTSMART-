@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   LogOut, Home, Package, ShoppingCart, Users, ClipboardList,
   Activity, Box, BarChart3, BrainCircuit, CreditCard, Layers, ArrowRightLeft,
-  RotateCcw, Receipt as ReceiptIcon, Sparkles, Sun, Moon
+  RotateCcw, Receipt as ReceiptIcon, Sparkles, Sun, Moon, QrCode
 } from "lucide-react";
 import { useTheme } from "@/components/ThemeProvider";
 import { AppHeader } from "@/components/AppHeader";
@@ -54,6 +54,7 @@ const navSections: Record<string, NavSection[]> = {
         { name: "Issue Stock",           href: "/inventory-manager/issuance",   icon: Box },
         { name: "Stock Movements",       href: "/inventory-manager/movements",  icon: ArrowRightLeft },
         { name: "Reports",               href: "/inventory-manager/reports",    icon: BarChart3 },
+        { name: "Barcode & Labels",      href: "/inventory-manager/labels",     icon: QrCode },
         { name: "AI Inventory Analysis", href: "/inventory-manager/ai",         icon: BrainCircuit },
       ],
     },
