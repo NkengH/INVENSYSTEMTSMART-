@@ -25,6 +25,12 @@
 - [Overview](#-overview)
 - [Key Features](#-key-features)
 - [Architecture & Tech Stack](#-architecture--tech-stack)
+- [Architecture Explained: The MVC Model](#-architecture-explained-the-mvc-model)
+  - [1. The MODEL (M) — Data & Business State](#1-the-model-m--data--business-state)
+  - [2. The VIEW (V) — User Interface & Presentation](#2-the-view-v--user-interface--presentation)
+  - [3. The CONTROLLER (C) — Routing, Logic & Orchestration](#3-the-controller-c--routing-logic--orchestration)
+  - [4. End-to-End Walkthrough: Processing a Sale](#4-end-to-end-walkthrough-processing-a-sale)
+  - [5. Summary Architecture Matrix](#5-summary-architecture-matrix)
 - [Getting Started](#-getting-started)
   - [Prerequisites](#prerequisites)
   - [Installation](#installation)
@@ -77,42 +83,152 @@
 
 ## 🛠️ Architecture & Tech Stack
 
+| Domain | Technology | Description |
+| :--- | :--- | :--- |
+| **Framework** | Next.js 16.2.6 (Turbopack) | Modern React server components, streaming SSR, and edge middleware |
+| **Frontend Library**| React 19.2.6, TypeScript 5.9 | Component UI, strict types, modern hooks |
+| **Database** | MongoDB & Mongoose 9.9.4 | NoSQL document storage with atomic mutations and schema validations |
+| **Styling** | Vanilla CSS Tokens + Tailwind 4 | Responsive design system, CSS variables, Dark & Light modes |
+| **Authentication** | `bcrypt` + `jose` (JWT) | Secure salt-hashed passwords and signed HTTP-only cookies |
+| **AI Integration** | Google Gemini 2.4 / Pro | Demand forecasting, anomaly alerts, natural language inventory chat |
+| **Charts** | Recharts 3.10 | Live sales charts, categorical distributions, inventory trends |
+| **Testing** | Vitest 5.0, Supertest | Server action unit testing, schema validation, and RBAC matrix |
+
+---
+
+## 🏛️ Architecture Explained: The MVC Model
+
+The application follows the **Model-View-Controller (MVC)** architectural pattern to maintain a clean separation of concerns, high maintainability, and enterprise security.
+
 ```mermaid
 flowchart TD
-    subgraph Client ["Frontend Presentation Layer"]
-        UI["Next.js App Router (React 19 Server/Client Components)"]
-        POS["Cashier POS & Receipts"]
-        Header["AppHeader (Live Search, Notifications, Theme)"]
-        Footer["AppFooter (System Telemetry & Status)"]
+    subgraph View ["VIEW (Presentation Layer)"]
+        UI["React Server & Client Components"]
+        POS["POS Cashier Register (SaleForm.tsx)"]
+        Dash["DashboardLayout, AppHeader & AppFooter"]
+        Login["LoginForm & Public Landing Pages"]
     end
 
-    subgraph Controller ["Controller & Security Layer"]
-        Edge["Next.js Middleware (Session & RBAC Guard)"]
-        API["API Route Handlers (/api/auth, /api/notifications)"]
-        Actions["Server Actions (sales, adjustments, purchases, ai)"]
+    subgraph Controller ["CONTROLLER (Logic, Security & Routing)"]
+        MW["Middleware Route Guard (proxy.ts)"]
+        API["API Route Handlers (route.ts)"]
+        Actions["Server Actions (sales, till, purchases, ai)"]
+        AuthLogic["JWT & Session Orchestration"]
     end
 
-    subgraph Model ["Data & Intelligence Layer"]
-        DB["MongoDB Atlas + Mongoose 9.9"]
-        Gemini["Google Gemini Pro AI Engine"]
+    subgraph Model ["MODEL (Data, Rules & Persistence)"]
+        Mongoose["Mongoose Schemas & Singleton Connection"]
+        Collections["MongoDB Collections (Users, Products, Sales, Till)"]
+        Validations["Data Integrity, Stock & Reason Constraints"]
     end
 
-    UI -->|"User Actions"| Edge
-    Edge --> Controller
-    Controller -->|"Mutations & Queries"| DB
-    Actions -->|"Prompts & Context"| Gemini
+    UI -->|"User Actions (Clicks, Inputs, Scans)"| Controller
+    Controller -->|"Queries & Atomic Mutations"| Model
+    Model -->|"Raw Documents / State"| Controller
+    Controller -->|"Formatted JSON / SSR Props"| View
 ```
 
-| Domain | Technology |
-| :--- | :--- |
-| **Framework** | Next.js 16.2.6 (App Router, Turbopack) |
-| **Library** | React 19.2.6, TypeScript 5.9.3 |
-| **Database** | MongoDB via Mongoose 9.9.4 |
-| **Styling** | Vanilla CSS Design System + Tailwind CSS 4 |
-| **Authentication** | `bcrypt` password hashing + Signed HTTP-Only JWT cookies (`jose`) |
-| **AI Engine** | Google Gemini (`@google/generative-ai`) |
-| **Data Visualization** | Recharts 3.10 |
-| **Testing** | Vitest 5.0, Testing Library React, Supertest |
+---
+
+### 1. The MODEL (M) — Data & Business State
+
+The **Model** represents the application's business data, schema definitions, validation constraints, and database connections (`src/db/index.ts` and `src/db/schema.ts`).
+
+| Model | Purpose & Data Attributes | Business Rules & Constraints |
+| :--- | :--- | :--- |
+| **`User`** | `username`, `passwordHash`, `role`, `isActive` | Roles strictly limited to `Administrator`, `Inventory Manager`, or `Cashier`. Passwords securely hashed with `bcrypt`. |
+| **`Product`** | `name`, `sku`, `barcode`, `sellingPrice`, `purchasePrice`, `stock`, `minimumStock` | Ensures SKU uniqueness; tracks real-time inventory quantity; triggers low-stock alerts when `stock <= minimumStock`. |
+| **`Category`** | `name`, `description` | Grouping products (Laptops, Printers, Hardware, etc.). |
+| **`Sale`** | `saleNumber`, `cashierId`, `items`, `subtotal`, `discount`, `total`, `paymentMethod` | Records finalized POS orders (Cash, MTN MoMo, Orange, Card, Transfer) and deducts inventory. |
+| **`TillSession`** | `cashierId`, `openingFloat`, `closingCash`, `expectedCash`, `status` | Enforces shift management; ensures cashiers balance their drawer before signing out. |
+| **`StockMovement`**| `productId`, `type` (IN/OUT/ADJUSTMENT), `quantity`, `reference` | Immutable audit trail of every unit received or issued. |
+| **`AuditLog`** | `userId`, `action`, `details`, `timestamp` | Security log tracking logins, price edits, and role changes. |
+
+---
+
+### 2. The VIEW (V) — User Interface & Presentation
+
+The **View** represents everything the user interacts with on screen. Built using React components (combining fast Next.js Server Components with dynamic Client Components) styled with CSS variables supporting **Dark & Light Mode**.
+
+- **Global Layout & Frame:**
+  - `src/app/layout.tsx`: Root layout with `ThemeProvider.tsx`.
+  - `src/components/DashboardLayout.tsx`: Dynamic sidebar showing only navigation links permitted for the user's role.
+  - `src/components/AppHeader.tsx`: Sticky topbar showing live breadcrumbs, clock, global search (`Ctrl+K`), system notifications, and theme toggle.
+  - `src/components/AppFooter.tsx`: Telemetry bar showing live uptime (99.98%), DB health, and branch info.
+
+- **Role-Specific Workspaces:**
+  - **Cashier POS (`src/app/cashier/sales/SaleForm.tsx`):**
+    - Touch/click-friendly category cards.
+    - Real-time cart calculator with instant tax/discount computation.
+    - Quick-tender currency notes and cash change calculator.
+    - Thermal receipt preview modal ready for printing.
+  - **Inventory Workspace (`src/app/inventory-manager/`):**
+    - Product catalogs, stock reception forms, shelf barcode label generators, and stock adjustment tables.
+    - `src/app/inventory-manager/ai/AIChatPanel.tsx`: Conversational analytics interface to ask AI about inventory reorder points.
+  - **Authentication Gateway (`src/app/page.tsx` & `src/components/LoginForm.tsx`):**
+    - Clean, centered card for username/password sign-in.
+
+---
+
+### 3. The CONTROLLER (C) — Routing, Logic & Orchestration
+
+The **Controller** role is shared between **Middleware**, **API Route Handlers (`route.ts`)**, and **Server Actions**. The Controller receives incoming user actions from the View, verifies permissions, performs business computations, calls the Model to read or write data, and returns the response.
+
+- **Route Guard Controller (Middleware — `src/proxy.ts`):**
+  - Redirects unauthenticated users to `/login`.
+  - Ensures a Cashier cannot navigate into `/admin` or `/inventory-manager`, while Inventory Managers and Administrators inherit Cashier permissions (enabling them to open/close tills, execute sales, and process refunds).
+
+- **Authentication Controller (`src/app/api/auth/login/route.ts`):**
+  1. Receives `{ username, password }` from the View.
+  2. Queries the `User` Model.
+  3. Verifies `bcrypt` password hash.
+  4. Issues a signed, secure HTTP-only session cookie.
+  5. Returns success to the View to trigger automatic redirection.
+
+- **POS Transaction Controller (`src/app/actions/sales.ts`):**
+  1. Receives cart items, cashier ID, and payment method from the View.
+  2. Validates that all requested products exist in the `Product` Model and have adequate `stock`.
+  3. Atomically reduces the product stock in the database.
+  4. Creates a new `Sale` document and a corresponding `StockMovement` entry.
+  5. Returns the finalized sale record to the View for printing.
+
+- **AI Prediction Controller (`src/app/actions/ai.ts`):**
+  1. Extracts current inventory counts and minimum stock thresholds from the `Product` Model.
+  2. Constructs an enterprise prompt and queries Google Gemini.
+  3. Parses the AI response and sends actionable inventory suggestions back to the View.
+
+---
+
+### 4. End-to-End Walkthrough: Processing a Sale
+
+Here is how the 3 layers work together during a single cashier sale:
+
+1. **User Interaction (VIEW):** 
+   The Cashier clicks on the "Laptops" category card in `SaleForm.tsx`, selects an item, and clicks **"Confirm & Print Receipt"**.
+2. **Dispatch to Controller (CONTROLLER):** 
+   The View sends an execution request with the cart payload to the Server Action / route handler.
+3. **Business Validation (CONTROLLER $\rightarrow$ MODEL):**
+   The controller accesses `src/db/schema.ts` through Mongoose:
+   - Verifies the cashier's till session is currently **OPEN**.
+   - Checks that inventory is available: `Product.stock >= requestedQuantity`.
+4. **State Persistence (MODEL):**
+   The database executes an atomic transaction:
+   - Updates `Product.stock = Product.stock - quantity`.
+   - Inserts the new `Sale` record with payment metadata.
+   - Logs an `INVENTORY_DEDUCTION` in `StockMovement`.
+5. **View Update (CONTROLLER $\rightarrow$ VIEW):**
+   The controller responds with `HTTP 200` and the generated sale number (`REC-2026-XXXX`). 
+   The View plays a subtle checkout audio cue, clears the cart, and displays the **Thermal Print Receipt Modal**.
+
+---
+
+### 5. Summary Architecture Matrix
+
+| MVC Component | Technologies Used | Responsibility in this Application |
+| :--- | :--- | :--- |
+| **Model** | MongoDB, Mongoose, Schemas, bcrypt | Defines tables/collections, validation rules, stock counters, relationships, and encryption. |
+| **View** | Next.js Components, TSX, CSS Variables, Lucide Icons | Renders responsive pages, dark/light theme, POS registers, forms, cards, and modal dialogs. |
+| **Controller** | Next.js API Routes, Middleware, Server Actions, Jose (JWT) | Validates input, guards role routes, verifies passwords, updates stock, and bridges AI models with data. |
 
 ---
 
