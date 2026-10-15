@@ -2,7 +2,7 @@
   "name": "ai-inventory-management-system",
   "private": true,
   "scripts": {
-    "dev": "next dev --webpack",
+    "dev": "next dev -H 0.0.0.0 --webpack",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",

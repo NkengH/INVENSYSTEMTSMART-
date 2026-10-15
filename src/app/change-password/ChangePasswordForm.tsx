@@ -71,9 +71,8 @@ export function ChangePasswordForm({ username, role }: ChangePasswordFormProps) 
       else if (userRole === "Cashier") targetPath = "/cashier";
 
       setTimeout(() => {
-        router.push(targetPath);
-        router.refresh();
-      }, 1200);
+        window.location.href = targetPath;
+      }, 1000);
     } catch (err: any) {
       setError(err?.message || "Failed to update password. Please check your credentials.");
       setLoading(false);

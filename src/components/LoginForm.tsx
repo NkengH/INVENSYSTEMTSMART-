@@ -32,11 +32,20 @@ export function LoginForm() {
       }
 
       if (data.mustChangePassword) {
-        router.push("/change-password");
+        window.location.href = "/change-password";
         return;
       }
 
-      router.refresh();
+      const dest =
+        data.role === "Administrator"
+          ? "/admin"
+          : data.role === "Inventory Manager"
+          ? "/inventory-manager"
+          : data.role === "Cashier"
+          ? "/cashier"
+          : "/admin";
+
+      window.location.href = dest;
     } catch (err: any) {
       setError(err.message);
       setLoading(false);
